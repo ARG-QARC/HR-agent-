@@ -27,10 +27,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve PDF resume files statically
-resumes_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resumes")
+# Serve PDF resume files statically (use /tmp on Vercel)
+if os.environ.get("VERCEL"):
+    resumes_dir = "/tmp/resumes"
+else:
+    resumes_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resumes")
+
 if not os.path.exists(resumes_dir):
-    os.makedirs(resumes_dir)
+    os.makedirs(resumes_dir, exist_ok=True)
 app.mount("/resumes", StaticFiles(directory=resumes_dir), name="resumes")
 
 # Initialize database tables on startup

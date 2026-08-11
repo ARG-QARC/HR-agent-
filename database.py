@@ -2,8 +2,12 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-# Force recruiting.db to be created in the same folder as this script (absolute path)
-default_db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recruiting.db")
+# Use /tmp for SQLite when running in serverless environments like Vercel
+if os.environ.get("VERCEL"):
+    default_db_path = "/tmp/recruiting.db"
+else:
+    default_db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recruiting.db")
+
 DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{default_db_path}")
 
 # Create SQLAlchemy Engine
