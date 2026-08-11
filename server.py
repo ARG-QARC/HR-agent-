@@ -354,5 +354,17 @@ def get_candidate_pdf_file(candidate_identifier: str, db: Session = Depends(data
 
     raise HTTPException(status_code=404, detail="PDF resume file not found.")
 
+# Fallback handler to serve static frontend assets (styles.css, app.js, db.js, voice_agent.js, manifest.json, sw.js, icons)
+@app.get("/{filename:path}")
+def serve_static_files(filename: str):
+    root_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(root_dir, filename)
+    if os.path.isfile(file_path):
+        return FileResponse(file_path)
+    index_path = os.path.join(root_dir, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    raise HTTPException(status_code=404, detail="File not found")
+
 
 
