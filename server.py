@@ -37,6 +37,16 @@ if not os.path.exists(resumes_dir):
     os.makedirs(resumes_dir, exist_ok=True)
 app.mount("/resumes", StaticFiles(directory=resumes_dir), name="resumes")
 
+from fastapi.responses import FileResponse
+
+# Serve root URL
+@app.get("/")
+def read_root():
+    index_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    return {"status": "online", "message": "HR Agent API is active"}
+
 # Initialize database tables on startup
 @app.on_event("startup")
 def startup_event():
