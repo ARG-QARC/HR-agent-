@@ -263,7 +263,11 @@ def sync_resumes_from_email(db_session=None):
 
     status, data = mail.search(None, 'UNSEEN')
     if status != 'OK' or not data or not data[0]:
-        print("No new unread emails found.")
+        print("No unread emails found in UNSEEN. Checking all recent emails...")
+        status, data = mail.search(None, 'ALL')
+
+    if status != 'OK' or not data or not data[0]:
+        print("No emails found to scan.")
         mail.logout()
         return 0
 
