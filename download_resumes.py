@@ -302,6 +302,7 @@ def sync_resumes_from_email(db_session=None):
 
                     email_body = extract_email_body_text(msg)
                     subj_lower = subject.lower()
+                    subj_norm = subj_lower.replace("-", " ").replace("_", " ")
 
                     # ── Job Matching Logic ──
                     matched_job_id = None
@@ -309,13 +310,16 @@ def sync_resumes_from_email(db_session=None):
                     # 1. Match subject tag / job ID / job title in subject line
                     if active_tags:
                         for tag, jid in active_tags.items():
-                            if tag in subj_lower or jid.lower() in subj_lower or jid.split("-")[-1] in subj_lower:
+                            tag_norm = tag.lower().replace("-", " ").replace("_", " ")
+                            jid_norm = jid.lower().replace("-", " ").replace("_", " ")
+                            if tag in subj_lower or jid.lower() in subj_lower or tag_norm in subj_norm or jid_norm in subj_norm:
                                 matched_job_id = jid
                                 break
                     
                     if not matched_job_id and active_jobs:
                         for jid, title, desc, tag in active_jobs:
-                            if title and title.lower() in subj_lower:
+                            title_norm = title.lower().replace("-", " ").replace("_", " ") if title else ""
+                            if (title and title.lower() in subj_lower) or (title_norm and title_norm in subj_norm):
                                 matched_job_id = jid
                                 break
 
