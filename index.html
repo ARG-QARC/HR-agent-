@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>LinkedIn Post & Recruiting Assistant (Mobile PWA)</title>
+  
+  <!-- PWA Manifest & Theme Color -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="icon-192.png">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- pdf.js Library for Client-Side PDF Text Extraction -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+  <link rel="stylesheet" href="styles.css">
+
+  <script>
+    function switchTab(targetTab) {
+      if (!targetTab) return;
+      var tabBtns = document.querySelectorAll(".tab-btn");
+      var tabViews = document.querySelectorAll(".tab-view");
+
+      for (var i = 0; i < tabBtns.length; i++) {
+        var b = tabBtns[i];
+        var tabAttr = b.getAttribute("data-tab");
+        if (tabAttr === targetTab || b.id === targetTab) {
+          b.classList.add("active");
+        } else {
+          b.classList.remove("active");
+        }
+      }
+
+      for (var j = 0; j < tabViews.length; j++) {
+        var v = tabViews[j];
+        if (v.id === targetTab) {
+          v.classList.add("active");
+          v.style.display = "block";
+        } else {
+          v.classList.remove("active");
+          v.style.display = "none";
+        }
+      }
+    }
+    window.switchTab = switchTab;
+
+    document.addEventListener("DOMContentLoaded", function() {
+      document.addEventListener("click", function(e) {
+        var btn = e.target.closest(".tab-btn");
+        if (!btn) return;
+        var targetTab = btn.getAttribute("data-tab");
+        if (targetTab) {
+          e.preventDefault();
+          switchTab(targetTab);
+        }
+      });
+    });
+  </script>
+</head>
+<body>
+
+  <!-- App Header -->
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-icon">🚀</span>
+      <span class="brand-title">RecruiterAI Automated Agent</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span class="status-badge" id="app-status">💾 Device Memory (IndexedDB)</span>
+      <span class="status-badge" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa; border-color: rgba(96, 165, 250, 0.3);" id="cloud-status">☁️ Cloud Backup</span>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="app-container">
+    
+    <!-- Tab Navigation Buttons -->
+    <nav class="nav-tabs">
+      <button class="tab-btn active" data-tab="tab-voice-agent" id="nav-voice-agent" onclick="window.switchTab('tab-voice-agent')">
+        <span>🎙️</span> Voice AI Agent
+      </button>
+      <button class="tab-btn" data-tab="tab-writer" id="nav-writer" onclick="window.switchTab('tab-writer')">
+        <span>📝</span> Post Writer
+      </button>
+      <button class="tab-btn" data-tab="tab-jobs" id="nav-jobs" onclick="window.switchTab('tab-jobs')">
+        <span>💼</span> Jobs & Resumes
+      </button>
+      <button class="tab-btn" data-tab="tab-evaluator" id="nav-evaluator" onclick="window.switchTab('tab-evaluator')">
+        <span>📊</span> AI Evaluator
+      </button>
+      <button class="tab-btn" data-tab="tab-settings" id="nav-settings" onclick="window.switchTab('tab-settings')">
+        <span>⚙️</span> Cloud & Settings
+      </button>
+    </nav>
+
+    <!-- ── TAB 0: AUTOMATED VOICE AGENT HUB ──────────────────────────────────── -->
+    <section class="tab-view active" id="tab-voice-agent">
+      <div class="glass-panel voice-agent-card">
+        <div class="voice-agent-header">
+          <div class="agent-avatar-orb" id="agent-voice-orb">
+            <div class="orb-core"></div>
+            <div class="orb-wave"></div>
+          </div>
+          <div style="flex: 1;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+              <h2 class="panel-title" style="margin-bottom: 0;"><span>🤖</span> RecruiterAI Continuous Voice Agent</h2>
+              <span class="status-badge" style="background: rgba(52, 211, 153, 0.15); color: #34d399; border-color: rgba(52, 211, 153, 0.3); font-size: 11px;">
+                ⚡ Auto Background Monitor: Active
+              </span>
+            </div>
+            <p style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">
+              Single continuous chat thread with persistent memory. State & queries automatically resume on mobile app launch.
+            </p>
+          </div>
+        </div>
+
+        <div class="agent-context-box" id="agent-active-context" style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <span style="font-size: 12px; color: #38bdf8; font-weight: 700;">📌 ACTIVE CONTEXT:</span>
+            <span id="agent-context-text" style="font-size: 13px; color: #f8fafc; font-weight: 500;">No active job selected. Dictate or type a query to begin!</span>
+          </div>
+          <button class="btn btn-secondary" id="btn-clear-chat" style="padding: 2px 8px; font-size: 11px; height: 26px;" title="Clear Chat Memory">
+            <span>🗑️</span> Clear Memory
+          </button>
+        </div>
+
+        <!-- Voice & Text Continuous Conversation Stream -->
+        <div class="chat-stream-container" id="agent-chat-stream">
+          <div class="chat-msg system">
+            <span class="msg-author">🤖 Recruiter AI:</span>
+            <div class="msg-text">Hello! I am your automated recruiting agent. Type or dictate your request in a single query:
+              <br>• <i>"Create post for Senior Python Developer with 5 years experience"</i>
+              <br>• <i>"Evaluate applicants for Senior Python Developer"</i>
+              <br>• <i>"Schedule interview call with top applicant"</i>
+            </div>
+          </div>
+        </div>
+
+        <!-- Voice & Unified Text Control Bar -->
+        <div class="voice-control-bar">
+          <button class="btn btn-primary btn-voice-pulse" id="btn-master-voice">
+            <span id="master-voice-icon">🎤</span>
+            <span id="master-voice-label">Dictate Voice</span>
+          </button>
+          
+          <div class="voice-text-input-group">
+            <input type="text" id="voice-text-input" placeholder="Type prompt or query here (e.g. Hire Senior Data Scientist)..." class="form-control" onkeydown="if(event.key==='Enter' && window.sendVoiceAgentQuery) window.sendVoiceAgentQuery()">
+            <button class="btn btn-secondary" id="btn-send-voice-text">Send</button>
+          </div>
+
+          <button class="btn btn-icon" id="btn-toggle-tts" title="Toggle Voice Audio Feedback">
+            <span id="tts-icon">🔊</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── TAB 1: POST WRITER ────────────────────────────────────────────────── -->
+    <section class="tab-view" id="tab-writer">
+      <div class="grid-2col">
+        
+        <!-- Left Panel: Single Prompt Entry (No separate Job Title box!) -->
+        <div class="glass-panel">
+          <h2 class="panel-title"><span>✍️</span> Describe Position or Voice Dictate</h2>
+          <div class="form-group">
+            <label class="form-label" for="prompt-input">Job Details & Prompt (Job position automatically detected)</label>
+            <textarea id="prompt-input" style="min-height: 140px;" placeholder="Describe job position, requirements, and responsibilities... (e.g., We are hiring a Senior Data Scientist at Al Rahim Group with 5+ years Machine Learning experience)"></textarea>
+          </div>
+          
+          <div class="btn-group">
+            <button class="btn btn-secondary btn-mic" id="btn-record">
+              <span>🎤</span> Record Voice
+            </button>
+            <button class="btn btn-primary" id="btn-generate">
+              <span>✨</span> Generate Post
+            </button>
+          </div>
+        </div>
+
+        <!-- Right Panel: Refined Preview & Share -->
+        <div class="glass-panel">
+          <h2 class="panel-title"><span>📱</span> LinkedIn Post Preview</h2>
+          <div class="preview-box" id="post-preview">Your generated LinkedIn post draft will appear here...</div>
+          
+          <div class="btn-group" style="margin-top: 16px;">
+            <button class="btn btn-secondary" id="btn-clear">
+              <span>🗑️</span> Clear
+            </button>
+            <button class="btn btn-primary" id="btn-create-job" onclick="window.createAndSaveJob()">
+              <span>📌</span> Create & Save Job Position
+            </button>
+            <button class="btn btn-accent" id="btn-copy-share" disabled>
+              <span>📋</span> Copy & Share LinkedIn
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ── TAB 2: JOBS & RESUMES MANAGER ───────────────────────────────────── -->
+    <section class="tab-view" id="tab-jobs">
+      
+      <!-- Email Sync & Resume Extraction Toolbar -->
+      <div class="glass-panel">
+        <h2 class="panel-title"><span>📥</span> Sync & Extract Email Resumes</h2>
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">
+          Fetch candidate email submissions and extract PDF resumes into matching <code>.txt</code> files automatically.
+        </p>
+        <div class="btn-group" style="align-items: center; flex-wrap: wrap; gap: 10px;">
+          <button class="btn btn-primary" id="btn-sync-emails">
+            <span>🔄</span> Fetch Email Resumes (Gmail Sync)
+          </button>
+          <label class="btn btn-secondary" style="cursor: pointer; margin: 0;">
+            <span>📄</span> Upload Candidate PDFs
+            <input type="file" id="tab2-resume-input" accept=".pdf,.txt" multiple style="display: none;">
+          </label>
+
+          <!-- Custom Timer beside Upload Candidate PDFs button -->
+          <div style="display: inline-flex; align-items: center; gap: 8px; background: rgba(15,23,42,0.7); padding: 4px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
+            <span style="font-size: 12px; color: #38bdf8; font-weight: 600; display: flex; align-items: center; gap: 4px;">
+              ⏱️ Auto-Check:
+            </span>
+            <select id="cron-interval-select" class="form-control" style="padding: 4px 8px; font-size: 12px; width: 110px; height: 32px; background: #1e293b;">
+              <option value="1">1 Minute</option>
+              <option value="2">2 Minutes</option>
+              <option value="5" selected>5 Minutes</option>
+              <option value="10">10 Minutes</option>
+              <option value="15">15 Minutes</option>
+              <option value="30">30 Minutes</option>
+            </select>
+            <button class="btn btn-secondary" id="btn-cron-toggle" style="font-size: 12px; padding: 4px 12px; height: 32px;">
+              <span id="cron-toggle-icon">▶</span> <span id="cron-toggle-text">Start Auto-Sync</span>
+            </button>
+            <span id="cron-countdown-badge" style="display: none; font-size: 11px; color: #34d399; font-weight: 700; background: rgba(52,211,153,0.15); padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(52,211,153,0.3);">05:00</span>
+          </div>
+        </div>
+        <div id="sync-status-msg" style="margin-top: 10px; font-size: 13px; color: var(--accent-emerald);"></div>
+        <div id="cron-log-msg" style="margin-top: 4px; font-size: 12px; color: #94a3b8; font-family: monospace;"></div>
+      </div>
+
+      <!-- Active Tracked Jobs List -->
+      <div class="glass-panel">
+        <h2 class="panel-title"><span>📂</span> Active Tracked Jobs</h2>
+        <div id="jobs-list-container">
+          <p style="color: var(--text-muted); font-size: 14px;">No active job positions tracked in IndexedDB yet. Generate a post in Tab 1 and click 'Create & Save Job Position'.</p>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ── TAB 3: AI CANDIDATE EVALUATOR ───────────────────────────────────── -->
+    <section class="tab-view" id="tab-evaluator">
+      
+      <!-- Candidate Upload & Selection Bar -->
+      <div class="glass-panel">
+        <h2 class="panel-title"><span>📊</span> AI Multi-Dimensional Candidate Scoring</h2>
+        
+        <div class="grid-2col" style="gap: 12px; margin-bottom: 12px;">
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" for="eval-job-select">1. Select Job Position</label>
+            <select id="eval-job-select" class="form-control">
+              <option value="">-- Choose Job Position --</option>
+            </select>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" for="eval-cand-select">2. Select Candidate / Resume</label>
+            <select id="eval-cand-select" class="form-control" disabled>
+              <option value="">-- All Candidates for Selected Job --</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Upload Candidate Resumes (PDF / Text / Image)</label>
+          <input type="file" id="resume-file-input" accept=".pdf,.txt,image/*" class="form-control" multiple>
+        </div>
+
+        <div class="btn-group">
+          <button class="btn btn-accent" id="btn-score-candidates" disabled>
+            <span>🤖</span> Score Unscored Candidates with Gemini
+          </button>
+        </div>
+      </div>
+
+      <!-- Candidate Evaluation Results Cards Container -->
+      <div class="glass-panel">
+        <h2 class="panel-title"><span>🏆</span> Evaluated Candidates</h2>
+        <div id="candidates-cards-container">
+          <p style="color: var(--text-muted); font-size: 14px;">Select a job position above to view ranked candidate scores.</p>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ── TAB 4: SETTINGS ──────────────────────────────────────────────────── -->
+    <section class="tab-view" id="tab-settings">
+      <div class="glass-panel">
+        <h2 class="panel-title"><span>⚙️</span> Gemini API & Company Profile Memory</h2>
+        
+        <div class="form-group">
+          <label class="form-label" for="setting-gemini-key">Gemini API Key</label>
+          <input type="password" class="form-control" id="setting-gemini-key" placeholder="AIzaSy...">
+          <span style="font-size: 11px; color: var(--text-muted);">Stored securely in browser IndexedDB on your device.</span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="setting-company-name">Company Name</label>
+          <input type="text" class="form-control" id="setting-company-name" placeholder="e.g. Al Rahim Group">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="setting-company-intro">Company Introduction</label>
+          <textarea id="setting-company-intro" placeholder="A leading business conglomerate specializing in global trade and engineering..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="setting-contact-email">Contact / Application Email</label>
+          <input type="email" class="form-control" id="setting-contact-email" placeholder="e.g. danish.alrahimgroup@gmail.com">
+        </div>
+
+        <button class="btn btn-primary" id="btn-save-settings" type="button">Save Settings</button>
+      </div>
+
+      <!-- Standalone Cloud Storage & Device Memory Backup Panel -->
+      <div class="glass-panel" style="margin-top: 20px;">
+        <h2 class="panel-title"><span>☁️</span> Cloud Storage Backup & Standalone Device Memory</h2>
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+          This app runs 100% standalone without requiring any database server (Railway, Render, PostgreSQL, or SQLite). Data is stored directly in your device memory and can be backed up to cloud storage.
+        </p>
+
+        <div class="grid-2col" style="gap: 12px; margin-bottom: 16px;">
+          <div>
+            <h3 style="font-size: 14px; font-weight: 600; color: #38bdf8; margin-bottom: 8px;">💾 Device Backup (JSON)</h3>
+            <div class="btn-group">
+              <button class="btn btn-secondary" id="btn-export-db"><span>📥</span> Export JSON Backup</button>
+              <label class="btn btn-secondary" style="cursor: pointer; margin: 0;">
+                <span>📤</span> Import JSON Backup
+                <input type="file" id="btn-import-db-input" accept=".json" style="display: none;">
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <h3 style="font-size: 14px; font-weight: 600; color: #34d399; margin-bottom: 8px;">☁️ Serverless Cloud Sync API</h3>
+            <div class="form-group" style="margin-bottom: 8px;">
+              <input type="text" class="form-control" id="setting-cloud-endpoint" placeholder="e.g. https://api.jsonbin.io/v3/b/YOUR_BIN_ID">
+            </div>
+            <div class="form-group" style="margin-bottom: 8px;">
+              <input type="password" class="form-control" id="setting-cloud-key" placeholder="Cloud Storage Master Key / Token (Optional)">
+            </div>
+            <div class="btn-group">
+              <button class="btn btn-accent" id="btn-sync-cloud-push"><span>☁️</span> Backup to Cloud</button>
+              <button class="btn btn-secondary" id="btn-sync-cloud-pull"><span>🔄</span> Restore from Cloud</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="cloud-sync-msg" style="font-size: 12px; font-family: monospace;"></div>
+      </div>
+    </section>
+
+
+  </main>
+
+  <!-- ── MODAL 1: PDF RESUME VIEWER ───────────────────────────────────────── -->
+  <div id="pdf-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-content glass-panel" style="max-width: 900px; width: 95%; height: 85vh; display: flex; flex-direction: column;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <h3 id="pdf-modal-title" style="font-size: 16px; font-weight: 700; color: #60a5fa;">👁️ Candidate Resume PDF</h3>
+        <button onclick="window.closePdfModal()" class="btn btn-secondary" style="padding: 4px 10px; font-size: 14px;">✖ Close</button>
+      </div>
+      <div id="pdf-viewer-container" style="flex: 1; background: #0f172a; border-radius: 8px; overflow: hidden; border: 1px solid var(--panel-border);">
+        <iframe id="pdf-iframe" style="width: 100%; height: 100%; border: none;"></iframe>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── MODAL 2: INTERVIEW INVITATION DIALOGUE ────────────────────────────── -->
+  <div id="interview-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-content glass-panel" style="max-width: 550px; width: 95%;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h3 style="font-size: 16px; font-weight: 700; color: #34d399;">📅 Call for Interview - Schedule Invitation</h3>
+        <button onclick="window.closeInterviewModal()" class="btn btn-secondary" style="padding: 4px 10px; font-size: 14px;">✖</button>
+      </div>
+
+      <input type="hidden" id="interview-cand-id">
+      
+      <div class="grid-2col" style="gap: 10px;">
+        <div class="form-group">
+          <label class="form-label" for="interview-cand-name">Candidate Full Name</label>
+          <input type="text" class="form-control" id="interview-cand-name" placeholder="e.g. M Danish Meraj">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="interview-cand-email">Candidate Email Address</label>
+          <input type="email" class="form-control" id="interview-cand-email" placeholder="e.g. applicant@gmail.com">
+        </div>
+      </div>
+
+      <div class="grid-2col" style="gap: 10px;">
+        <div class="form-group">
+          <label class="form-label" for="interview-date">Interview Date</label>
+          <input type="date" class="form-control" id="interview-date">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="interview-day">Day of Week</label>
+          <select id="interview-day" class="form-control">
+            <option value="Monday">Monday</option>
+            <option value="Tuesday">Tuesday</option>
+            <option value="Wednesday">Wednesday</option>
+            <option value="Thursday">Thursday</option>
+            <option value="Friday">Friday</option>
+            <option value="Saturday">Saturday</option>
+            <option value="Sunday">Sunday</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid-2col" style="gap: 10px;">
+        <div class="form-group">
+          <label class="form-label" for="interview-time">Time</label>
+          <input type="time" class="form-control" id="interview-time" value="10:30">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="interview-type">Interview Format</label>
+          <select id="interview-type" class="form-control">
+            <option value="Google Meet / Video Call">Google Meet / Video Call</option>
+            <option value="In-Person Office Interview">In-Person Office Interview</option>
+            <option value="Phone Technical Screen">Phone Technical Screen</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="interview-location">Location / Meeting Link</label>
+        <input type="text" class="form-control" id="interview-location" placeholder="e.g. https://meet.google.com/abc-defg-hij or Head Office Karachi">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="interview-notes">Additional Notes / Message</label>
+        <textarea id="interview-notes" style="min-height: 70px;" placeholder="Please bring your updated resume and portfolio..."></textarea>
+      </div>
+
+      <div class="btn-group" style="justify-content: flex-end; margin-top: 16px;">
+        <button onclick="window.closeInterviewModal()" class="btn btn-secondary">Cancel</button>
+        <button onclick="window.sendInterviewEmail()" class="btn btn-accent" id="btn-send-interview">
+          <span>✉️</span> Send Interview Call Email
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="voice_agent.js?v=3"></script>
+  <script type="module" src="app.js?v=3"></script>
+</body>
+</html>
+

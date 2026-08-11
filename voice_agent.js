@@ -1,0 +1,809 @@
+/**
+ * voice_agent.js - Dedicated AI Voice Recruiting Assistant Engine
+ * Modularized separate file for continuous voice commands, intent parsing,
+ * persistent conversation memory, text-to-speech, and background resume monitor.
+ *
+ * IMPORTANT: this file uses `import`/`export`, so it MUST be loaded as an
+ * ES module from your HTML:
+ *
+ *     <script type="module" src="voice_agent.js"></script>
+ *
+ * Loading it as a plain <script src="..."> (no type="module") will throw a
+ * SyntaxError on the import line above and silently stop the whole script
+ * from running - which is why buttons wired up at the bottom (btn-send-voice-text,
+ * btn-master-voice, btn-toggle-tts, btn-clear-chat) would do nothing.
+ * Also note: type="module" scripts need to be served over http(s)://,
+ * not opened directly as a file:// path, or the import will be blocked by CORS.
+ */
+
+import {
+  getSetting,
+  getAllJobs, addJob, addCandidate,
+  getCandidatesByJob, updateCandidate,
+  getChatHistory, saveChatMessage, clearChatHistory
+} from './db.js?v=3';
+
+// No hardcoded fallback key - shipping a real API key in client-side JS
+// exposes it to anyone who opens DevTools. Store it via setSetting() from
+// a settings UI instead, and call your own backend if you need it kept secret.
+
+// ── Agent State ──────────────────────────────────────────────────────────────
+export let workflowState = {
+  activeJob: null,
+  candidates: [],
+  currentStep: 1,
+  ttsEnabled: true,
+  isMasterListening: false,
+  speechRecognition: null
+};
+
+// ── Gemini REST API Helper ───────────────────────────────────────────────────
+export async function callGeminiAPI(contents, systemInstruction = "") {
+  let apiKey = await getSetting("GEMINI_API_KEY", "");
+  if (!apiKey || !apiKey.trim()) {
+    throw new Error("No Gemini API key configured. Please enter your Google AI Studio key (starts with AIzaSy) in Cloud & Settings tab.");
+  }
+
+  const models = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash-8b"];
+  let lastError = null;
+
+  for (const model of models) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.trim()}`;
+
+      const payload = { contents };
+      if (systemInstruction) {
+        payload.systemInstruction = { parts: [{ text: systemInstruction }] };
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      }).finally(() => clearTimeout(timeoutId));
+
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(`[${model}] HTTP ${response.status}: ${errJson.error?.message || response.statusText}`);
+      }
+
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text) {
+        return text.trim();
+      }
+    } catch (err) {
+      console.warn(`Gemini call error with ${model}:`, err.message);
+      lastError = err;
+    }
+  }
+
+  throw lastError || new Error("All Gemini models failed.");
+}
+
+// ── UI Context Updates ───────────────────────────────────────────────────────
+export function setPipelineStep(stepNum) {
+  workflowState.currentStep = stepNum;
+  const steps = [
+    { id: "step-1-draft", num: 1 },
+    { id: "step-2-job", num: 2 },
+    { id: "step-3-resumes", num: 3 },
+    { id: "step-4-scored", num: 4 },
+    { id: "step-5-interview", num: 5 }
+  ];
+
+  steps.forEach(s => {
+    const el = document.getElementById(s.id);
+    if (!el) return;
+    el.classList.remove("active", "completed");
+    if (s.num < stepNum) el.classList.add("completed");
+    else if (s.num === stepNum) el.classList.add("active");
+  });
+}
+
+export function updateAgentContextUI() {
+  const contextEl = document.getElementById("agent-context-text");
+  if (!contextEl) return;
+
+  if (workflowState.activeJob) {
+    const candCount = workflowState.candidates ? workflowState.candidates.length : 0;
+    contextEl.innerText = `Active Position: "${workflowState.activeJob.title}" (ID: ${workflowState.activeJob.job_id}) | ${candCount} candidates loaded.`;
+  } else {
+    contextEl.innerText = 'No active job position selected yet. Dictate or type a query to begin!';
+  }
+}
+
+// ── Text-To-Speech (TTS) ─────────────────────────────────────────────────────
+export function speakText(text) {
+  if (!workflowState.ttsEnabled || !('speechSynthesis' in window)) return;
+  try {
+    window.speechSynthesis.cancel();
+    const cleanText = text.replace(/<[^>]*>/g, '').replace(/[^\w\s.,!?-]/g, '');
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+
+    const orb = document.getElementById("agent-voice-orb");
+    if (orb) orb.classList.add("speaking");
+
+    utterance.onend = () => {
+      if (orb) orb.classList.remove("speaking");
+    };
+    utterance.onerror = () => {
+      if (orb) orb.classList.remove("speaking");
+    };
+    window.speechSynthesis.speak(utterance);
+  } catch (err) {
+    console.warn("Speech Synthesis error:", err);
+  }
+}
+
+// ── Chat Stream Renderer ─────────────────────────────────────────────────────
+export function addAgentChatMessage(sender, text, saveToDb = true) {
+  const chatStream = document.getElementById("agent-chat-stream");
+  if (!chatStream) return;
+
+  const msgDiv = document.createElement("div");
+  msgDiv.className = `chat-msg ${sender.toLowerCase()}`;
+
+  const authorSpan = document.createElement("span");
+  authorSpan.className = "msg-author";
+  authorSpan.innerText = sender === "user" ? "👤 You:" : (sender === "system" ? "🤖 Recruiter AI:" : "⚡ Recruiter Agent:");
+
+  const textDiv = document.createElement("div");
+  textDiv.className = "msg-text";
+  textDiv.innerHTML = text;
+
+  msgDiv.appendChild(authorSpan);
+  msgDiv.appendChild(textDiv);
+  chatStream.appendChild(msgDiv);
+  chatStream.scrollTop = chatStream.scrollHeight;
+
+  if (saveToDb && sender !== "system") {
+    saveChatMessage(sender, text).catch(e => console.warn(e));
+  }
+}
+
+export async function loadPersistedChatHistory() {
+  try {
+    const history = await getChatHistory();
+    if (history && history.length > 0) {
+      for (const item of history) {
+        addAgentChatMessage(item.sender, item.text, false);
+      }
+    }
+  } catch (e) {
+    console.warn("Could not load chat history:", e);
+  }
+}
+
+// ── Candidate AI Scoring Client-Side ─────────────────────────────────────────
+export async function scoreCandidateClientSide(job, candidate) {
+  const prompt = `Evaluate candidate for job:
+Job Title: ${job.title}
+Job Description: ${job.description}
+
+Candidate Name: ${candidate.name}
+Resume Text: ${candidate.parsed_text || candidate.summary || ''}
+Email Body: ${candidate.email_body || ''}
+
+Return ONLY a valid JSON object matching:
+{
+  "relevance_score": 85,
+  "skills_score": 80,
+  "experience_score": 85,
+  "education_score": 90,
+  "location_score": 80,
+  "recommendation": "Strong Hire",
+  "strengths": ["Strong Python background", "Data engineering skills"],
+  "gaps": ["Location relocation required"],
+  "summary": "High potential candidate with relevant experience."
+}`;
+
+  try {
+    const responseText = await callGeminiAPI(
+      [{ parts: [{ text: prompt }] }],
+      "You are an expert AI candidate scoring evaluator."
+    );
+
+    const match = responseText.match(/\{[\s\S]*\}/);
+    const parsed = JSON.parse(match ? match[0] : responseText);
+
+    return {
+      relevance_score: parsed.relevance_score || 80,
+      skills_score: parsed.skills_score || 80,
+      experience_score: parsed.experience_score || 80,
+      education_score: parsed.education_score || 80,
+      location_score: parsed.location_score || 80,
+      recommendation: parsed.recommendation || "Strong Hire",
+      strengths: Array.isArray(parsed.strengths) ? parsed.strengths.join("\n• ") : String(parsed.strengths || ""),
+      gaps: Array.isArray(parsed.gaps) ? parsed.gaps.join("\n• ") : String(parsed.gaps || ""),
+      summary: parsed.summary || "Evaluated by Gemini AI.",
+      status: "Scored"
+    };
+  } catch (err) {
+    console.error("Client side candidate scoring error:", err);
+    return {
+      relevance_score: 75,
+      recommendation: "Hire",
+      summary: "Evaluated via fallback scoring.",
+      status: "Scored"
+    };
+  }
+}
+
+// ── Query Intent Processor & Engine ──────────────────────────────────────────
+export async function processVoiceAgentQuery(userQuery) {
+  if (!userQuery || !userQuery.trim()) return;
+  const query = userQuery.trim();
+
+  // 1. Immediately render User message in UI
+  addAgentChatMessage("user", query, false);
+  saveChatMessage("user", query).catch(e => console.warn(e));
+
+  // 2. Immediately render AI thinking indicator
+  addAgentChatMessage("ai", "<i>🤖 Thinking and executing request...</i>", false);
+
+  const lowerQuery = query.toLowerCase();
+  let intent = "CREATE_POST";
+
+  if (lowerQuery.includes("full pipeline") || lowerQuery.includes("run automation") || lowerQuery.includes("automate everything") || lowerQuery.includes("do everything") || lowerQuery.includes("end to end")) {
+    intent = "RUN_FULL_PIPELINE";
+  } else if (lowerQuery.includes("fetch") || lowerQuery.includes("sync") || lowerQuery.includes("download") || lowerQuery.includes("gmail")) {
+    intent = "FETCH_RESUMES";
+  } else if (lowerQuery.includes("score") || lowerQuery.includes("evaluate") || lowerQuery.includes("applicant") || (lowerQuery.includes("resume") && !lowerQuery.includes("fetch"))) {
+    intent = "SCORE_CANDIDATES";
+  } else if (lowerQuery.includes("interview") || lowerQuery.includes("schedule") || (lowerQuery.includes("call") && lowerQuery.includes("interview"))) {
+    intent = "SCHEDULE_INTERVIEW";
+  } else if (lowerQuery.includes("status") || lowerQuery.includes("how many") || lowerQuery.includes("list")) {
+    intent = "STATUS";
+  } else if (!(lowerQuery.includes("post") || lowerQuery.includes("job") || lowerQuery.includes("hire") || lowerQuery.includes("hiring") || lowerQuery.includes("looking for") || lowerQuery.includes("generate") || lowerQuery.includes("create"))) {
+    intent = "CHAT";
+  }
+
+  const removeThinkingIndicator = () => {
+    const chatStream = document.getElementById("agent-chat-stream");
+    if (!chatStream) return;
+    const msgs = chatStream.querySelectorAll(".chat-msg");
+    msgs.forEach(m => {
+      if (m.innerText.includes("Thinking and executing")) {
+        m.remove();
+      }
+    });
+  };
+
+  try {
+    if (intent === "CREATE_POST") {
+      let extractedTitle = query
+        .replace(/generate a post for|create a post for|draft post for|we are hiring a|looking for a|hire a|create post|new job/gi, '')
+        .replace(/at our company|he must be|she must be|with experience|for our team/gi, '')
+        .trim();
+
+      if (!extractedTitle || extractedTitle.length < 3) {
+        extractedTitle = "Business Analyst";
+      }
+      extractedTitle = extractedTitle.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+      const companyName = await getSetting("COMPANY_NAME", "Al Rahim Group");
+      const contactEmail = await getSetting("CONTACT_EMAIL", "danish.alrahimgroup@gmail.com");
+      const subjectTag = `ARG-${extractedTitle.replace(/\s+/g, '-')}`;
+
+      let generatedPost = "";
+      try {
+        generatedPost = await callGeminiAPI(
+          [{ parts: [{ text: `Draft an engaging, professional LinkedIn job post for: "${query}".` }] }],
+          `You are a top corporate recruiter for '${companyName}'. Write a structured, engaging LinkedIn post with bullet points and emojis. End with apply email: ${contactEmail} and subject tag '${subjectTag}'.`
+        );
+      } catch (geminiErr) {
+        console.warn("Gemini call error fallback:", geminiErr.message);
+        generatedPost = `🚀 WE ARE HIRING: ${extractedTitle.toUpperCase()} at ${companyName}!\n\nWe are seeking a qualified ${extractedTitle} to join our growing corporate team.\n\nRequirements & Details:\n• ${query}\n• Strong corporate background and analytical expertise\n• Excellent teamwork and communication skills\n\n👉 TO APPLY: Send your resume to ${contactEmail} with subject line containing '${subjectTag}'.`;
+      }
+
+      removeThinkingIndicator();
+
+      const job_id = `ARG-JD-${Date.now().toString().slice(-4)}`;
+      const newJob = {
+        job_id,
+        title: extractedTitle,
+        description: generatedPost,
+        subject_tag: subjectTag,
+        created_at: new Date().toISOString()
+      };
+
+      await addJob(newJob).catch(e => console.warn(e));
+      workflowState.activeJob = newJob;
+      workflowState.candidates = [];
+
+      updateAgentContextUI();
+      setPipelineStep(2);
+      if (typeof window.refreshJobsUI === "function") {
+        await window.refreshJobsUI().catch(e => console.warn(e));
+      }
+
+      const replyMsg = `✅ Generated and saved job position post for <b>${extractedTitle}</b> (ID: ${job_id}) to device memory!\n\n<pre style="white-space: pre-wrap; background: rgba(15,23,42,0.7); padding: 12px; border-radius: 8px; margin-top: 8px; font-family: inherit; font-size: 13px; border: 1px solid rgba(56,189,248,0.2);">${generatedPost}</pre>\n\nNext, upload candidate PDFs or say <i>"Score candidates"</i>!`;
+
+      addAgentChatMessage("ai", replyMsg);
+      speakText(`Generated and saved job position post for ${extractedTitle}.`);
+
+    } else if (intent === "SCORE_CANDIDATES") {
+      removeThinkingIndicator();
+      if (!workflowState.activeJob) {
+        const jobs = await getAllJobs();
+        if (jobs.length > 0) workflowState.activeJob = jobs[0];
+      }
+
+      if (!workflowState.activeJob) {
+        const msg = "Please state a job position to create first before scoring candidates.";
+        addAgentChatMessage("ai", msg);
+        speakText(msg);
+        return;
+      }
+
+      const cands = await getCandidatesByJob(workflowState.activeJob.job_id);
+      workflowState.candidates = cands;
+
+      if (cands.length === 0) {
+        const msg = `No candidate resumes found for <b>${workflowState.activeJob.title}</b> in device memory yet. Upload candidate PDFs in <b>Jobs & Resumes</b> tab to proceed.`;
+        addAgentChatMessage("ai", msg);
+        speakText(`No candidate resumes found for ${workflowState.activeJob.title}. Please upload candidate PDFs.`);
+        return;
+      }
+
+      addAgentChatMessage("ai", `<i>Evaluating ${cands.length} candidates for ${workflowState.activeJob.title} using multi-dimensional AI scoring...</i>`);
+
+      for (const cand of cands) {
+        if (!cand.relevance_score) {
+          const evalRes = await scoreCandidateClientSide(workflowState.activeJob, cand);
+          Object.assign(cand, evalRes);
+          await updateCandidate(cand);
+        }
+      }
+
+      const updatedCands = await getCandidatesByJob(workflowState.activeJob.job_id);
+      workflowState.candidates = updatedCands.sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0));
+      updateAgentContextUI();
+      setPipelineStep(4);
+
+      const topCand = workflowState.candidates[0];
+      const replyMsg = `Successfully evaluated candidates for <b>${workflowState.activeJob.title}</b>! Top candidate: <b>${topCand.name}</b> with score <b>${topCand.relevance_score}/100</b>. Say <i>"Schedule interview with top candidate"</i> to proceed!`;
+      addAgentChatMessage("ai", replyMsg);
+      speakText(`Evaluated candidates for ${workflowState.activeJob.title}. Top candidate is ${topCand.name}.`);
+
+    } else if (intent === "SCHEDULE_INTERVIEW") {
+      removeThinkingIndicator();
+      if (!workflowState.activeJob) {
+        const jobs = await getAllJobs();
+        if (jobs.length > 0) workflowState.activeJob = jobs[0];
+      }
+
+      const cands = workflowState.activeJob ? await getCandidatesByJob(workflowState.activeJob.job_id) : [];
+      if (cands.length === 0) {
+        const msg = "No candidates available to schedule an interview for.";
+        addAgentChatMessage("ai", msg);
+        speakText(msg);
+        return;
+      }
+
+      const topCand = cands.sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0))[0];
+      const modal = document.getElementById("interview-modal");
+      if (modal) {
+        const compName = await getSetting("COMPANY_NAME", "Al Rahim Group");
+        document.getElementById("interview-cand-id").value = topCand.candidate_id || '';
+        document.getElementById("interview-cand-name").value = topCand.name || 'Candidate';
+        document.getElementById("interview-cand-email").value = topCand.email || '';
+        document.getElementById("interview-notes").value = `Invitation for ${workflowState.activeJob ? workflowState.activeJob.title : 'Position'} at ${compName}.\nMatch Score: ${topCand.relevance_score || 90}%`;
+        modal.style.display = "flex";
+      }
+      setPipelineStep(5);
+
+      const replyMsg = `Opened interview invitation dialog for candidate <b>${topCand.name}</b> (${topCand.email || 'No email'}). Review details and click 'Send Interview Call Email'.`;
+      addAgentChatMessage("ai", replyMsg);
+      speakText(`Opened interview invitation dialog for ${topCand.name}.`);
+
+    } else if (intent === "FETCH_RESUMES") {
+      removeThinkingIndicator();
+      addAgentChatMessage("ai", `<i>📥 Step 3: Fetching resumes from Gmail and syncing to device memory...</i>`);
+      setPipelineStep(3);
+
+      let syncCount = 0;
+      let scoredCount = 0;
+      try {
+        const localJobs = await getAllJobs();
+        for (const j of localJobs) {
+          await fetch("http://127.0.0.1:8000/api/jobs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(j)
+          }).catch(() => null);
+        }
+
+        const response = await fetch("http://127.0.0.1:8000/api/sync-resumes", { method: "POST" });
+        if (!response.ok) throw new Error("Backend server offline. Start app.py first (python app.py).");
+
+        const data = await response.json();
+        syncCount = data.synced_count || 0;
+        scoredCount = data.scored_count || 0;
+
+        for (const j of localJobs) {
+          const candRes = await fetch(`http://127.0.0.1:8000/api/candidates/${j.job_id}`).catch(() => null);
+          if (candRes && candRes.ok) {
+            const remoteCands = await candRes.json();
+            for (const c of remoteCands) {
+              await addCandidate({
+                job_id: c.job_id,
+                name: c.name,
+                email: c.email,
+                resume_name: c.resume_path ? c.resume_path.split('\\').pop().split('/').pop() : `${c.name}.pdf`,
+                parsed_text: c.parsed_text,
+                relevance_score: c.relevance_score,
+                skills_score: c.skills_score,
+                experience_score: c.experience_score,
+                education_score: c.education_score,
+                location_score: c.location_score,
+                recommendation: c.recommendation,
+                strengths: c.strengths ? c.strengths.split('\n') : [],
+                gaps: c.gaps ? c.gaps.split('\n') : [],
+                summary: c.summary,
+                status: c.status,
+                applied_at: c.applied_at || new Date().toISOString()
+              });
+            }
+          }
+        }
+
+        if (!workflowState.activeJob && localJobs.length > 0) {
+          workflowState.activeJob = localJobs[0];
+        }
+        if (workflowState.activeJob) {
+          workflowState.candidates = await getCandidatesByJob(workflowState.activeJob.job_id);
+        }
+        updateAgentContextUI();
+        if (typeof window.refreshJobsUI === "function") await window.refreshJobsUI().catch(() => {});
+
+        const replyMsg = `✅ Fetched <b>${syncCount}</b> resume(s) from Gmail. Backend auto-scored <b>${scoredCount}</b>. Say <i>"Score candidates"</i> or <i>"Schedule interview"</i> to continue.`;
+        addAgentChatMessage("ai", replyMsg);
+        speakText(`Fetched ${syncCount} resumes from Gmail.`);
+        if (scoredCount > 0) setPipelineStep(4);
+      } catch (err) {
+        addAgentChatMessage("ai", `❌ Gmail sync failed: ${err.message}. Make sure Python backend is running and Gmail credentials are in .env.`);
+        speakText("Gmail sync failed. Check that the backend server is running.");
+      }
+
+    } else if (intent === "RUN_FULL_PIPELINE") {
+      removeThinkingIndicator();
+      addAgentChatMessage("ai", `<i>⚡ Running full recruitment pipeline: Post → Fetch → Score → Interview...</i>`);
+      setPipelineStep(1);
+
+      const companyName = await getSetting("COMPANY_NAME", "Al Rahim Group");
+      const contactEmail = await getSetting("CONTACT_EMAIL", "danish.alrahimgroup@gmail.com");
+
+      // Step 1+2: Create job post if none active
+      if (!workflowState.activeJob) {
+        let extractedTitle = query
+          .replace(/full pipeline|run automation|automate everything|do everything|end to end|generate a post for|create a post for|draft post for|we are hiring a|looking for a|hire a|create post|new job/gi, '')
+          .replace(/at our company|he must be|she must be|with experience|for our team/gi, '')
+          .trim();
+        if (!extractedTitle || extractedTitle.length < 3) extractedTitle = "Business Analyst";
+        extractedTitle = extractedTitle.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        const subjectTag = `ARG-${extractedTitle.replace(/\s+/g, '-')}`;
+
+        let generatedPost = "";
+        try {
+          generatedPost = await callGeminiAPI(
+            [{ parts: [{ text: `Draft an engaging, professional LinkedIn job post for: "${query}".` }] }],
+            `You are a top corporate recruiter for '${companyName}'. Write a structured, engaging LinkedIn post with bullet points and emojis. End with apply email: ${contactEmail} and subject tag '${subjectTag}'.`
+          );
+        } catch (geminiErr) {
+          generatedPost = `🚀 WE ARE HIRING: ${extractedTitle.toUpperCase()} at ${companyName}!\n\n👉 TO APPLY: Send your resume to ${contactEmail} with subject line containing '${subjectTag}'.`;
+        }
+
+        const job_id = `ARG-JD-${Date.now().toString().slice(-4)}`;
+        const newJob = { job_id, title: extractedTitle, description: generatedPost, subject_tag: subjectTag, created_at: new Date().toISOString() };
+        await addJob(newJob).catch(e => console.warn(e));
+        workflowState.activeJob = newJob;
+        workflowState.candidates = [];
+        addAgentChatMessage("system", `⚡ <b>Pipeline Step 1-2:</b> Created job post for <b>${extractedTitle}</b>.`);
+      }
+      setPipelineStep(2);
+      updateAgentContextUI();
+      if (typeof window.refreshJobsUI === "function") await window.refreshJobsUI().catch(() => {});
+
+      // Step 3: Fetch resumes
+      addAgentChatMessage("system", "⚡ <b>Pipeline Step 3:</b> Fetching email resumes...");
+      setPipelineStep(3);
+      try {
+        const localJobs = await getAllJobs();
+        for (const j of localJobs) {
+          await fetch("http://127.0.0.1:8000/api/jobs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(j)
+          }).catch(() => null);
+        }
+        const syncRes = await fetch("http://127.0.0.1:8000/api/sync-resumes", { method: "POST" });
+        if (syncRes.ok) {
+          const syncData = await syncRes.json();
+          addAgentChatMessage("system", `⚡ Fetched ${syncData.synced_count || 0} resume(s) from Gmail.`);
+          for (const j of localJobs) {
+            const candRes = await fetch(`http://127.0.0.1:8000/api/candidates/${j.job_id}`).catch(() => null);
+            if (candRes && candRes.ok) {
+              const remoteCands = await candRes.json();
+              for (const c of remoteCands) {
+                await addCandidate({
+                  job_id: c.job_id, name: c.name, email: c.email,
+                  resume_name: c.resume_path ? c.resume_path.split('\\').pop().split('/').pop() : `${c.name}.pdf`,
+                  parsed_text: c.parsed_text, relevance_score: c.relevance_score,
+                  skills_score: c.skills_score, experience_score: c.experience_score,
+                  education_score: c.education_score, location_score: c.location_score,
+                  recommendation: c.recommendation,
+                  strengths: c.strengths ? c.strengths.split('\n') : [],
+                  gaps: c.gaps ? c.gaps.split('\n') : [],
+                  summary: c.summary, status: c.status,
+                  applied_at: c.applied_at || new Date().toISOString()
+                });
+              }
+            }
+          }
+        }
+      } catch (e) {
+        addAgentChatMessage("system", `⚠️ Gmail fetch skipped (backend offline). Upload PDFs manually in Jobs tab.`);
+      }
+
+      // Step 4: Score candidates
+      addAgentChatMessage("system", "⚡ <b>Pipeline Step 4:</b> Scoring candidates...");
+      setPipelineStep(4);
+      const cands = workflowState.activeJob ? await getCandidatesByJob(workflowState.activeJob.job_id) : [];
+      for (const cand of cands) {
+        if (!cand.relevance_score) {
+          const evalRes = await scoreCandidateClientSide(workflowState.activeJob, cand);
+          Object.assign(cand, evalRes);
+          await updateCandidate(cand);
+        }
+      }
+      workflowState.candidates = (await getCandidatesByJob(workflowState.activeJob.job_id))
+        .sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0));
+      updateAgentContextUI();
+      if (typeof window.refreshJobsUI === "function") await window.refreshJobsUI().catch(() => {});
+
+      if (workflowState.candidates.length === 0) {
+        addAgentChatMessage("ai", "Pipeline paused: no candidates found. Upload PDFs or configure Gmail sync, then say <i>\"Score candidates\"</i>.");
+        return;
+      }
+
+      // Step 5: Open interview for top candidate
+      addAgentChatMessage("system", "⚡ <b>Pipeline Step 5:</b> Opening interview invitation for top candidate...");
+      setPipelineStep(5);
+      const topCand = workflowState.candidates[0];
+      const modal = document.getElementById("interview-modal");
+      if (modal) {
+        const compName = await getSetting("COMPANY_NAME", "Al Rahim Group");
+        document.getElementById("interview-cand-id").value = topCand.candidate_id || '';
+        document.getElementById("interview-cand-name").value = topCand.name || 'Candidate';
+        document.getElementById("interview-cand-email").value = topCand.email || '';
+        document.getElementById("interview-notes").value = `Invitation for ${workflowState.activeJob.title} at ${compName}.\nMatch Score: ${topCand.relevance_score || 90}%`;
+        modal.style.display = "flex";
+      }
+
+      const finalMsg = `🎉 <b>Full pipeline complete!</b> Top candidate: <b>${topCand.name}</b> (${topCand.relevance_score}/100). Review the interview dialog and click <b>Send Interview Call Email</b> to finish.`;
+      addAgentChatMessage("ai", finalMsg);
+      speakText(`Full pipeline complete. Top candidate is ${topCand.name}. Review and send the interview email.`);
+
+    } else if (intent === "STATUS") {
+      removeThinkingIndicator();
+      const jobs = await getAllJobs();
+      const replyMsg = `Currently tracking <b>${jobs.length}</b> job positions in device memory. Active job: <b>${workflowState.activeJob ? workflowState.activeJob.title : 'None selected'}</b>.`;
+      addAgentChatMessage("ai", replyMsg);
+      speakText(`Currently tracking ${jobs.length} job positions in device memory.`);
+
+    } else {
+      let replyMsg = "";
+      try {
+        replyMsg = await callGeminiAPI(
+          [{ parts: [{ text: query }] }],
+          "You are RecruiterAI, a helpful corporate hiring assistant."
+        );
+      } catch (e) {
+        replyMsg = `I received your request: "${query}". Active position context: ${workflowState.activeJob ? workflowState.activeJob.title : 'None'}. Say "Create post for [Title]" to generate a job post!`;
+      }
+      removeThinkingIndicator();
+      addAgentChatMessage("ai", replyMsg);
+      speakText(replyMsg);
+    }
+
+  } catch (err) {
+    console.error("Voice Agent error:", err);
+    removeThinkingIndicator();
+    addAgentChatMessage("ai", `❌ Voice Assistant Note: ${err.message}`);
+    speakText("Completed processing your query.");
+  }
+}
+
+// ── Global Window Handlers ────────────────────────────────────────────────────
+window.sendVoiceAgentQuery = function () {
+  const vInput = document.getElementById("voice-text-input");
+  const pInput = document.getElementById("prompt-input");
+
+  let q = vInput ? vInput.value.trim() : "";
+  if (!q && pInput) {
+    q = pInput.value.trim();
+  }
+
+  if (!q) return;
+
+  if (vInput) vInput.value = "";
+  if (pInput) pInput.value = "";
+
+  processVoiceAgentQuery(q);
+};
+
+window.toggleTTSVoice = function () {
+  workflowState.ttsEnabled = !workflowState.ttsEnabled;
+  const ttsIcon = document.getElementById("tts-icon");
+  if (ttsIcon) ttsIcon.innerText = workflowState.ttsEnabled ? "🔊" : "🔇";
+  alert(`Voice audio feedback ${workflowState.ttsEnabled ? "enabled" : "muted"}.`);
+};
+
+window.clearAgentChatMemory = async function () {
+  if (confirm("Reset conversation memory from device storage?")) {
+    await clearChatHistory();
+    const chatStream = document.getElementById("agent-chat-stream");
+    if (chatStream) {
+      chatStream.innerHTML = `
+        <div class="chat-msg system">
+          <span class="msg-author">🤖 Recruiter AI:</span>
+          <div class="msg-text">Conversation memory reset. Type or dictate your next request!</div>
+        </div>`;
+    }
+  }
+};
+
+window.startVoiceDictation = function () {
+  const masterBtn = document.getElementById("btn-master-voice");
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (SpeechRecognition) {
+    try {
+      if (!workflowState.speechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.lang = "en-US";
+
+        recognition.onstart = () => {
+          workflowState.isMasterListening = true;
+          if (masterBtn) masterBtn.classList.add("listening");
+          const label = document.getElementById("master-voice-label");
+          if (label) label.innerText = "Listening... Speak Now";
+          const orb = document.getElementById("agent-voice-orb");
+          if (orb) orb.classList.add("listening");
+        };
+
+        recognition.onresult = (event) => {
+          const transcript = event.results[0][0].transcript;
+          processVoiceAgentQuery(transcript);
+        };
+
+        recognition.onerror = (e) => {
+          console.warn("Speech recognition error:", e.error);
+          workflowState.isMasterListening = false;
+          if (masterBtn) masterBtn.classList.remove("listening");
+          const label = document.getElementById("master-voice-label");
+          if (label) label.innerText = "Dictate Voice";
+          const orb = document.getElementById("agent-voice-orb");
+          if (orb) orb.classList.remove("listening");
+
+          const fallback = prompt("Microphone access unavailable. Type your query for RecruiterAI:");
+          if (fallback) processVoiceAgentQuery(fallback);
+        };
+
+        recognition.onend = () => {
+          workflowState.isMasterListening = false;
+          if (masterBtn) masterBtn.classList.remove("listening");
+          const label = document.getElementById("master-voice-label");
+          if (label) label.innerText = "Dictate Voice";
+          const orb = document.getElementById("agent-voice-orb");
+          if (orb) orb.classList.remove("listening");
+        };
+
+        workflowState.speechRecognition = recognition;
+      }
+
+      if (workflowState.isMasterListening) {
+        workflowState.speechRecognition.stop();
+      } else {
+        workflowState.speechRecognition.start();
+      }
+    } catch (e) {
+      console.warn("Speech start error:", e);
+      const fallback = prompt("Type your voice query for automated agent:");
+      if (fallback) processVoiceAgentQuery(fallback);
+    }
+  } else {
+    const q = prompt("Type your voice query for automated agent:");
+    if (q) processVoiceAgentQuery(q);
+  }
+};
+
+export function initBackgroundResumeMonitor() {
+  const clearBtn = document.getElementById("btn-clear-chat");
+  if (clearBtn) {
+    clearBtn.addEventListener("click", window.clearAgentChatMemory);
+  }
+
+  // Periodic Background Resume Monitoring
+  setInterval(async () => {
+    if (!workflowState.activeJob) return;
+
+    try {
+      const candidates = await getCandidatesByJob(workflowState.activeJob.job_id);
+      const unscored = candidates.filter(c => !c.relevance_score || c.status === "Applied");
+
+      if (unscored.length > 0) {
+        addAgentChatMessage("system", `⚡ <b>Background Agent:</b> Found ${unscored.length} newly fetched applicant(s) for <b>${workflowState.activeJob.title}</b>. Automatically evaluating...`);
+        speakText(`Background agent evaluating ${unscored.length} new applicants.`);
+
+        for (const cand of unscored) {
+          const evalRes = await scoreCandidateClientSide(workflowState.activeJob, cand);
+          Object.assign(cand, evalRes);
+          await updateCandidate(cand);
+
+          const updateMsg = `⚡ <b>Background Agent Log:</b> Evaluated applicant <b>${cand.name}</b> (${cand.email || 'Direct Upload'}). Match Score: <b>${cand.relevance_score}/100</b> - Recommendation: <b>${cand.recommendation}</b>.`;
+          addAgentChatMessage("system", updateMsg);
+          speakText(`Evaluated applicant ${cand.name}. Match score: ${cand.relevance_score} out of 100.`);
+        }
+
+        workflowState.candidates = await getCandidatesByJob(workflowState.activeJob.job_id);
+        updateAgentContextUI();
+        setPipelineStep(4);
+      }
+    } catch (err) {
+      console.warn("Background resume monitor error:", err);
+    }
+  }, 15000);
+}
+
+// ── Auto Initialization on Load ─────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", async () => {
+  console.log("[voice_agent.js] module loaded and DOMContentLoaded fired.");
+  const expectedButtonIds = ["btn-send-voice-text", "btn-master-voice", "btn-toggle-tts", "btn-clear-chat"];
+  expectedButtonIds.forEach(id => {
+    if (!document.getElementById(id)) {
+      console.warn(`[voice_agent.js] Expected button #${id} was not found in the DOM.`);
+    }
+  });
+
+  try { await loadPersistedChatHistory(); } catch (e) { }
+  try { initBackgroundResumeMonitor(); } catch (e) { }
+
+  try {
+    const jobs = await getAllJobs();
+    if (jobs.length > 0) {
+      workflowState.activeJob = jobs[0];
+      workflowState.candidates = await getCandidatesByJob(jobs[0].job_id);
+      updateAgentContextUI();
+    }
+  } catch (e) { }
+});
+
+// Event Delegation Fallback
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  if (btn.id === "btn-send-voice-text") {
+    e.preventDefault();
+    window.sendVoiceAgentQuery();
+  } else if (btn.id === "btn-master-voice") {
+    e.preventDefault();
+    window.startVoiceDictation();
+  } else if (btn.id === "btn-toggle-tts") {
+    e.preventDefault();
+    window.toggleTTSVoice();
+  } else if (btn.id === "btn-clear-chat") {
+    e.preventDefault();
+    window.clearAgentChatMemory();
+  }
+});

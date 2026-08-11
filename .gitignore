@@ -1,0 +1,16 @@
+.env
+*.db
+*.sqlite
+*.sqlite3
+recruiting.db
+__pycache__/
+*.py[cod]
+*$py.class
+bot_profile/
+chrome_automation_profile/
+cloned_chrome_profile/
+.chrome_bot_link
+resumes/
+.vscode/
+.idea/
+*.bak
