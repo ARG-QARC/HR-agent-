@@ -243,6 +243,37 @@ Return ONLY a valid JSON object matching:
   }
 }
 
+// ── LLM Noise Cleaner & Intent Classifier ───────────────────────────────────
+export async function cleanTranscriptAndDetectIntent(rawTranscript) {
+  const prompt = `Analyze and clean up the following raw speech-to-text transcript. The transcript was captured from a microphone in a live environment and may contain background noise artifacts, filler words (um, ah, like, you know), acoustic misrecognitions, or fragmented syntax.
+
+Raw Voice Transcript: "${rawTranscript}"
+
+Task:
+1. Filter out background noise, filler words, and acoustic transcription errors.
+2. Determine the user's exact true intent and extracted role/requirements.
+3. Return ONLY a valid JSON object matching:
+{
+  "cleaned_text": "Cleaned user request without filler words or noise",
+  "intent": "CREATE_POST" | "SCORE_CANDIDATES" | "SCHEDULE_INTERVIEW" | "FETCH_RESUMES" | "STATUS" | "CHAT",
+  "extracted_role": "Clean Role Title if applicable (e.g. Senior Data Scientist)"
+}`;
+
+  try {
+    const resText = await callGeminiAPI(
+      [{ parts: [{ text: prompt }] }],
+      "You are an AI Noise Filter, Acoustic Cleaner, and Intent Classifier for corporate recruiting."
+    );
+    const match = resText.match(/\{[\s\S]*\}/);
+    if (match) {
+      return JSON.parse(match[0]);
+    }
+  } catch (e) {
+    console.warn("LLM Transcript Cleaning notice:", e.message);
+  }
+  return { cleaned_text: rawTranscript, intent: null, extracted_role: null };
+}
+
 // ── Query Intent Processor & Engine ──────────────────────────────────────────
 export async function processVoiceAgentQuery(userQuery) {
   if (!userQuery || !userQuery.trim()) return;
@@ -253,23 +284,29 @@ export async function processVoiceAgentQuery(userQuery) {
   saveChatMessage("user", query).catch(e => console.warn(e));
 
   // 2. Immediately render AI thinking indicator
-  addAgentChatMessage("ai", "<i>🤖 Thinking and executing request...</i>", false);
+  addAgentChatMessage("ai", "<i>🤖 Filtering noise & analyzing request...</i>", false);
 
-  const lowerQuery = query.toLowerCase();
-  let intent = "CREATE_POST";
+  // 3. Run LLM Noise Cleaner & Intent Classifier
+  const llmAnalysis = await cleanTranscriptAndDetectIntent(query);
+  const cleanedQuery = llmAnalysis.cleaned_text || query;
 
-  if (lowerQuery.includes("full pipeline") || lowerQuery.includes("run automation") || lowerQuery.includes("automate everything") || lowerQuery.includes("do everything") || lowerQuery.includes("end to end")) {
-    intent = "RUN_FULL_PIPELINE";
-  } else if (lowerQuery.includes("fetch") || lowerQuery.includes("sync") || lowerQuery.includes("download") || lowerQuery.includes("gmail")) {
-    intent = "FETCH_RESUMES";
-  } else if (lowerQuery.includes("score") || lowerQuery.includes("evaluate") || lowerQuery.includes("applicant") || (lowerQuery.includes("resume") && !lowerQuery.includes("fetch"))) {
-    intent = "SCORE_CANDIDATES";
-  } else if (lowerQuery.includes("interview") || lowerQuery.includes("schedule") || (lowerQuery.includes("call") && lowerQuery.includes("interview"))) {
-    intent = "SCHEDULE_INTERVIEW";
-  } else if (lowerQuery.includes("status") || lowerQuery.includes("how many") || lowerQuery.includes("list")) {
-    intent = "STATUS";
-  } else if (!(lowerQuery.includes("post") || lowerQuery.includes("job") || lowerQuery.includes("hire") || lowerQuery.includes("hiring") || lowerQuery.includes("looking for") || lowerQuery.includes("generate") || lowerQuery.includes("create") || lowerQuery.includes("developer") || lowerQuery.includes("engineer") || lowerQuery.includes("scientist") || lowerQuery.includes("analyst") || lowerQuery.includes("manager") || lowerQuery.includes("designer") || lowerQuery.includes("experience") || lowerQuery.includes("exp") || lowerQuery.includes("years") || lowerQuery.includes("requirement") || lowerQuery.includes("need"))) {
-    intent = "CHAT";
+  const lowerQuery = cleanedQuery.toLowerCase();
+  let intent = llmAnalysis.intent || "CREATE_POST";
+
+  if (!llmAnalysis.intent) {
+    if (lowerQuery.includes("full pipeline") || lowerQuery.includes("run automation") || lowerQuery.includes("automate everything") || lowerQuery.includes("do everything") || lowerQuery.includes("end to end")) {
+      intent = "RUN_FULL_PIPELINE";
+    } else if (lowerQuery.includes("fetch") || lowerQuery.includes("sync") || lowerQuery.includes("download") || lowerQuery.includes("gmail")) {
+      intent = "FETCH_RESUMES";
+    } else if (lowerQuery.includes("score") || lowerQuery.includes("evaluate") || lowerQuery.includes("applicant") || (lowerQuery.includes("resume") && !lowerQuery.includes("fetch"))) {
+      intent = "SCORE_CANDIDATES";
+    } else if (lowerQuery.includes("interview") || lowerQuery.includes("schedule") || (lowerQuery.includes("call") && lowerQuery.includes("interview"))) {
+      intent = "SCHEDULE_INTERVIEW";
+    } else if (lowerQuery.includes("status") || lowerQuery.includes("how many") || lowerQuery.includes("list")) {
+      intent = "STATUS";
+    } else if (!(lowerQuery.includes("post") || lowerQuery.includes("job") || lowerQuery.includes("hire") || lowerQuery.includes("hiring") || lowerQuery.includes("looking for") || lowerQuery.includes("generate") || lowerQuery.includes("create") || lowerQuery.includes("developer") || lowerQuery.includes("engineer") || lowerQuery.includes("scientist") || lowerQuery.includes("analyst") || lowerQuery.includes("manager") || lowerQuery.includes("designer") || lowerQuery.includes("experience") || lowerQuery.includes("exp") || lowerQuery.includes("years") || lowerQuery.includes("requirement") || lowerQuery.includes("need"))) {
+      intent = "CHAT";
+    }
   }
 
   const removeThinkingIndicator = () => {
@@ -713,9 +750,24 @@ window.clearAgentChatMemory = async function () {
   }
 };
 
-window.startVoiceDictation = function () {
+window.startVoiceDictation = async function () {
   const masterBtn = document.getElementById("btn-master-voice");
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  // Request browser hardware DSP noise cancellation stream
+  try {
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+    }
+  } catch (audioErr) {
+    console.warn("Hardware noise cancellation notice:", audioErr.message);
+  }
 
   if (SpeechRecognition) {
     try {
