@@ -268,7 +268,7 @@ export async function processVoiceAgentQuery(userQuery) {
     intent = "SCHEDULE_INTERVIEW";
   } else if (lowerQuery.includes("status") || lowerQuery.includes("how many") || lowerQuery.includes("list")) {
     intent = "STATUS";
-  } else if (!(lowerQuery.includes("post") || lowerQuery.includes("job") || lowerQuery.includes("hire") || lowerQuery.includes("hiring") || lowerQuery.includes("looking for") || lowerQuery.includes("generate") || lowerQuery.includes("create"))) {
+  } else if (!(lowerQuery.includes("post") || lowerQuery.includes("job") || lowerQuery.includes("hire") || lowerQuery.includes("hiring") || lowerQuery.includes("looking for") || lowerQuery.includes("generate") || lowerQuery.includes("create") || lowerQuery.includes("developer") || lowerQuery.includes("engineer") || lowerQuery.includes("scientist") || lowerQuery.includes("analyst") || lowerQuery.includes("manager") || lowerQuery.includes("designer") || lowerQuery.includes("experience") || lowerQuery.includes("exp") || lowerQuery.includes("years") || lowerQuery.includes("requirement") || lowerQuery.includes("need"))) {
     intent = "CHAT";
   }
 
@@ -286,12 +286,12 @@ export async function processVoiceAgentQuery(userQuery) {
   try {
     if (intent === "CREATE_POST") {
       let extractedTitle = query
-        .replace(/generate a post for|create a post for|draft post for|we are hiring a|looking for a|hire a|create post|new job/gi, '')
-        .replace(/at our company|he must be|she must be|with experience|for our team/gi, '')
+        .replace(/generate a post for|create a post for|draft post for|we are hiring a|looking for a|hire a|create post|new job|we need a|we require a/gi, '')
+        .replace(/at our company|he must be|she must be|with experience|for our team|years experience|years exp|skills/gi, '')
         .trim();
 
       if (!extractedTitle || extractedTitle.length < 3) {
-        extractedTitle = "Business Analyst";
+        extractedTitle = "Specialist Role";
       }
       extractedTitle = extractedTitle.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
@@ -302,8 +302,14 @@ export async function processVoiceAgentQuery(userQuery) {
       let generatedPost = "";
       try {
         generatedPost = await callGeminiAPI(
-          [{ parts: [{ text: `Draft an engaging, professional LinkedIn job post for: "${query}".` }] }],
-          `You are a top corporate recruiter for '${companyName}'. Write a structured, engaging LinkedIn post with bullet points and emojis. End with apply email: ${contactEmail} and subject tag '${subjectTag}'.`
+          [{ parts: [{ text: `Generate a comprehensive Job Description and engaging LinkedIn post for the following requirements: "${query}".` }] }],
+          `You are an elite AI Corporate Recruiter for '${companyName}'. As soon as the user specifies job requirements, immediately generate a complete, structured, professional Job Description & LinkedIn Post. Include:
+1. 🚀 Headline & Role Summary
+2. 🎯 Key Responsibilities & Skill Requirements (bullet points with emojis)
+3. 💼 Experience Level & Benefits
+4. 📬 Application Instructions: "Send resume to ${contactEmail} with Subject: '${subjectTag}'"
+
+Make it ready for instant candidate resume matching.`
         );
       } catch (geminiErr) {
         console.warn("Gemini call error fallback:", geminiErr.message);
