@@ -16,6 +16,13 @@ import {
   updateAgentContextUI
 } from './voice_agent.js?v=3';
 
+export function getApiBaseUrl() {
+  if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+    return "http://127.0.0.1:8000";
+  }
+  return window.location.origin;
+}
+
 // Configure pdf.js worker URL
 if (window.pdfjsLib) {
   window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -566,7 +573,7 @@ window.viewCandidatePdf = async function (candId) {
   }
 
   const pdfFileName = candidate.resume_name || `${candidate.name}.pdf`;
-  const pdfApiUrl = `http://127.0.0.1:8000/api/candidate-pdf/${encodeURIComponent(candidate.candidate_id || pdfFileName)}`;
+  const pdfApiUrl = `${getApiBaseUrl()}/api/candidate-pdf/${encodeURIComponent(candidate.candidate_id || pdfFileName)}`;
 
   if (title) {
     title.innerHTML = `📄 Candidate Resume PDF: <strong>${pdfFileName}</strong> 
@@ -733,7 +740,7 @@ window.sendInterviewEmail = async function () {
       notes: notes
     };
 
-    const response = await fetch("http://127.0.0.1:8000/api/send-interview-email", {
+    const response = await fetch(`${getApiBaseUrl()}/api/send-interview-email`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
@@ -885,21 +892,21 @@ async function triggerFetchAndAutoScore(silent = false) {
   try {
     const localJobs = await getAllJobs();
     for (const j of localJobs) {
-      await fetch("http://127.0.0.1:8000/api/jobs", {
+      await fetch(`${getApiBaseUrl()}/api/jobs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(j)
       }).catch(() => null);
     }
 
-    const response = await fetch("http://127.0.0.1:8000/api/sync-resumes", { method: "POST" }).catch(() => null);
+    const response = await fetch(`${getApiBaseUrl()}/api/sync-resumes`, { method: "POST" }).catch(() => null);
     if (response && response.ok) {
       const data = await response.json();
       const syncCount = data.synced_count || 0;
       const scoredCount = data.scored_count || 0;
 
       for (const j of localJobs) {
-        const candRes = await fetch(`http://127.0.0.1:8000/api/candidates/${j.job_id}`).catch(() => null);
+        const candRes = await fetch(`${getApiBaseUrl()}/api/candidates/${j.job_id}`).catch(() => null);
         if (candRes && candRes.ok) {
           const remoteCands = await candRes.json();
           for (const c of remoteCands) {

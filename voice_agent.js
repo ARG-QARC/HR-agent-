@@ -23,6 +23,13 @@ import {
   getChatHistory, saveChatMessage, clearChatHistory
 } from './db.js?v=3';
 
+function getApiBaseUrl() {
+  if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+    return "http://127.0.0.1:8000";
+  }
+  return window.location.origin;
+}
+
 // No hardcoded fallback key - shipping a real API key in client-side JS
 // exposes it to anyone who opens DevTools. Store it via setSetting() from
 // a settings UI instead, and call your own backend if you need it kept secret.
@@ -343,7 +350,46 @@ export async function processVoiceAgentQuery(userQuery) {
         return;
       }
 
-      const cands = await getCandidatesByJob(workflowState.activeJob.job_id);
+      let cands = await getCandidatesByJob(workflowState.activeJob.job_id);
+
+      if (cands.length === 0) {
+        addAgentChatMessage("ai", "⚡ <i>No candidate resumes found in device memory yet. Automatically checking Gmail for newly submitted candidate emails...</i>");
+        speakText("Checking Gmail for newly submitted candidate emails.");
+        
+        try {
+          const localJobs = await getAllJobs();
+          for (const j of localJobs) {
+            await fetch(`${getApiBaseUrl()}/api/jobs`, {
+              method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(j)
+            }).catch(() => null);
+          }
+          const syncRes = await fetch(`${getApiBaseUrl()}/api/sync-resumes`, { method: "POST" }).catch(() => null);
+          if (syncRes && syncRes.ok) {
+            for (const j of localJobs) {
+              const candRes = await fetch(`${getApiBaseUrl()}/api/candidates/${j.job_id}`).catch(() => null);
+              if (candRes && candRes.ok) {
+                const remoteCands = await candRes.json();
+                for (const c of remoteCands) {
+                  await addCandidate({
+                    job_id: c.job_id, name: c.name, email: c.email,
+                    resume_name: c.resume_path ? c.resume_path.split('\\').pop().split('/').pop() : `${c.name}.pdf`,
+                    parsed_text: c.parsed_text, relevance_score: c.relevance_score,
+                    skills_score: c.skills_score, experience_score: c.experience_score,
+                    education_score: c.education_score, location_score: c.location_score,
+                    recommendation: c.recommendation, strengths: c.strengths ? c.strengths.split('\n') : [],
+                    gaps: c.gaps ? c.gaps.split('\n') : [], summary: c.summary
+                  });
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("Real-time auto-sync notice:", e);
+        }
+
+        cands = await getCandidatesByJob(workflowState.activeJob.job_id);
+      }
+
       workflowState.candidates = cands;
 
       if (cands.length === 0) {
