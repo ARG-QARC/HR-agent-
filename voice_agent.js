@@ -501,48 +501,54 @@ Make it ready for instant candidate resume matching.`
       let syncCount = 0;
       let scoredCount = 0;
       try {
+        const baseUrl = getApiBaseUrl();
         const localJobs = await getAllJobs();
         for (const j of localJobs) {
-          await fetch("http://127.0.0.1:8000/api/jobs", {
+          await fetch(`${baseUrl}/api/jobs`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(j)
           }).catch(() => null);
         }
 
-        const response = await fetch("http://127.0.0.1:8000/api/sync-resumes", { method: "POST" });
-        if (!response.ok) throw new Error("Backend server offline. Start app.py first (python app.py).");
+        const response = await fetch(`${baseUrl}/api/sync-resumes`, { method: "POST" }).catch(() => null);
+        if (response && response.ok) {
+          const data = await response.json();
+          syncCount = data.synced_count || 0;
+          scoredCount = data.scored_count || 0;
 
-        const data = await response.json();
-        syncCount = data.synced_count || 0;
-        scoredCount = data.scored_count || 0;
-
-        for (const j of localJobs) {
-          const candRes = await fetch(`http://127.0.0.1:8000/api/candidates/${j.job_id}`).catch(() => null);
-          if (candRes && candRes.ok) {
-            const remoteCands = await candRes.json();
-            for (const c of remoteCands) {
-              await addCandidate({
-                job_id: c.job_id,
-                name: c.name,
-                email: c.email,
-                resume_name: c.resume_path ? c.resume_path.split('\\').pop().split('/').pop() : `${c.name}.pdf`,
-                parsed_text: c.parsed_text,
-                relevance_score: c.relevance_score,
-                skills_score: c.skills_score,
-                experience_score: c.experience_score,
-                education_score: c.education_score,
-                location_score: c.location_score,
-                recommendation: c.recommendation,
-                strengths: c.strengths ? c.strengths.split('\n') : [],
-                gaps: c.gaps ? c.gaps.split('\n') : [],
-                summary: c.summary,
-                status: c.status,
-                applied_at: c.applied_at || new Date().toISOString()
-              });
+          for (const j of localJobs) {
+            const candRes = await fetch(`${baseUrl}/api/candidates/${j.job_id}`).catch(() => null);
+            if (candRes && candRes.ok) {
+              const remoteCands = await candRes.json();
+              for (const c of remoteCands) {
+                await addCandidate({
+                  job_id: c.job_id,
+                  name: c.name,
+                  email: c.email,
+                  resume_name: c.resume_path ? c.resume_path.split('\\').pop().split('/').pop() : `${c.name}.pdf`,
+                  parsed_text: c.parsed_text,
+                  relevance_score: c.relevance_score,
+                  skills_score: c.skills_score,
+                  experience_score: c.experience_score,
+                  education_score: c.education_score,
+                  location_score: c.location_score,
+                  recommendation: c.recommendation,
+                  strengths: c.strengths ? c.strengths.split('\n') : [],
+                  gaps: c.gaps ? c.gaps.split('\n') : [],
+                  summary: c.summary,
+                  status: c.status,
+                  applied_at: c.applied_at || new Date().toISOString()
+                });
+              }
             }
           }
+        } else {
+          console.warn("[VoiceAgent] Backend sync endpoint unavailable. Running in local PWA mode.");
         }
+      } catch (err) {
+        console.warn("[VoiceAgent] Notice during sync:", err);
+      }
 
         if (!workflowState.activeJob && localJobs.length > 0) {
           workflowState.activeJob = localJobs[0];
@@ -605,20 +611,21 @@ Make it ready for instant candidate resume matching.`
       addAgentChatMessage("system", "⚡ <b>Pipeline Step 3:</b> Fetching email resumes...");
       setPipelineStep(3);
       try {
+        const baseUrl = getApiBaseUrl();
         const localJobs = await getAllJobs();
         for (const j of localJobs) {
-          await fetch("http://127.0.0.1:8000/api/jobs", {
+          await fetch(`${baseUrl}/api/jobs`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(j)
           }).catch(() => null);
         }
-        const syncRes = await fetch("http://127.0.0.1:8000/api/sync-resumes", { method: "POST" });
-        if (syncRes.ok) {
+        const syncRes = await fetch(`${baseUrl}/api/sync-resumes`, { method: "POST" }).catch(() => null);
+        if (syncRes && syncRes.ok) {
           const syncData = await syncRes.json();
           addAgentChatMessage("system", `⚡ Fetched ${syncData.synced_count || 0} resume(s) from Gmail.`);
           for (const j of localJobs) {
-            const candRes = await fetch(`http://127.0.0.1:8000/api/candidates/${j.job_id}`).catch(() => null);
+            const candRes = await fetch(`${baseUrl}/api/candidates/${j.job_id}`).catch(() => null);
             if (candRes && candRes.ok) {
               const remoteCands = await candRes.json();
               for (const c of remoteCands) {
@@ -637,9 +644,11 @@ Make it ready for instant candidate resume matching.`
               }
             }
           }
+        } else {
+          addAgentChatMessage("system", "📱 Operating in standalone PWA mode using local device memory.");
         }
       } catch (e) {
-        addAgentChatMessage("system", `⚠️ Gmail fetch skipped (backend offline). Upload PDFs manually in Jobs tab.`);
+        addAgentChatMessage("system", "📱 Operating in standalone PWA mode using local device memory.");
       }
 
       // Step 4: Score candidates
