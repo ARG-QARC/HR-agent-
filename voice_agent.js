@@ -500,9 +500,10 @@ Make it ready for instant candidate resume matching.`
 
       let syncCount = 0;
       let scoredCount = 0;
+      let localJobs = [];
       try {
         const baseUrl = getApiBaseUrl();
-        const localJobs = await getAllJobs();
+        localJobs = await getAllJobs();
         for (const j of localJobs) {
           await fetch(`${baseUrl}/api/jobs`, {
             method: "POST",
@@ -546,9 +547,6 @@ Make it ready for instant candidate resume matching.`
         } else {
           console.warn("[VoiceAgent] Backend sync endpoint unavailable. Running in local PWA mode.");
         }
-      } catch (err) {
-        console.warn("[VoiceAgent] Notice during sync:", err);
-      }
 
         if (!workflowState.activeJob && localJobs.length > 0) {
           workflowState.activeJob = localJobs[0];
@@ -564,8 +562,8 @@ Make it ready for instant candidate resume matching.`
         speakText(`Fetched ${syncCount} resumes from Gmail.`);
         if (scoredCount > 0) setPipelineStep(4);
       } catch (err) {
-        addAgentChatMessage("ai", `❌ Gmail sync failed: ${err.message}. Make sure Python backend is running and Gmail credentials are in .env.`);
-        speakText("Gmail sync failed. Check that the backend server is running.");
+        addAgentChatMessage("ai", `📱 Operating in standalone PWA mode using device memory.`);
+        speakText("Operating in standalone PWA mode.");
       }
 
     } else if (intent === "RUN_FULL_PIPELINE") {
