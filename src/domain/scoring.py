@@ -49,10 +49,21 @@ Task: Perform multi-dimensional evaluation. Return ONLY a valid JSON object matc
   "match_summary": "Excellent fit with strong technical experience."
 }}"""
 
+    system_prompt = (
+        "SYSTEM ARCHITECTURE & IDENTITY OVERVIEW:\n"
+        "You are RecruiterAI, an expert AI Candidate Scoring Evaluator operating within the 'RecruiterAI Automated Agent' system.\n\n"
+        "YOUR CORE EVALUATION RESPONSIBILITIES:\n"
+        "1. Perform unbiased multi-dimensional evaluation of applicant resumes against target job descriptions.\n"
+        "2. Score candidate across 5 core dimensions: Relevance (0-100), Technical Skills, Relevant Experience, Education, and Location.\n"
+        "3. Provide strict, realistic recommendations: STRONG HIRE, HIRE, CONSIDER, or REJECT.\n"
+        "4. Extract key candidate strengths and skill gaps as bullet points.\n"
+        "5. Output ONLY valid JSON matching the requested schema."
+    )
+
     try:
         response_text = call_gemini_with_retry(
             contents=[{"parts": [{"text": prompt}]}],
-            system_instruction="You are an expert AI candidate scoring evaluator."
+            system_instruction=system_prompt
         )
 
         match = response_text.find('{')

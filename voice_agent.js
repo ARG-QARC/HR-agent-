@@ -44,6 +44,47 @@ export let workflowState = {
   speechRecognition: null
 };
 
+// ── System Intelligence & Architectural Context Prompt Builder ─────────────
+export async function getSystemIntelligencePrompt(customRole = "Autonomous Recruiter AI Assistant") {
+  const companyName = await getSetting("COMPANY_NAME", "Al Rahim Group");
+  const companyIntro = await getSetting("COMPANY_INTRO", "A leading business conglomerate specializing in global trade, engineering, and manufacturing.");
+  const contactEmail = await getSetting("CONTACT_EMAIL", "danish.alrahimgroup@gmail.com");
+
+  const activeJob = workflowState.activeJob;
+  const activeJobContext = activeJob
+    ? `Active Target Position Context: "${activeJob.title}" (Job ID: ${activeJob.job_id}, Subject Tag: ${activeJob.subject_tag || 'N/A'})`
+    : "Active Target Position Context: No position selected currently.";
+
+  return `SYSTEM ARCHITECTURE & IDENTITY OVERVIEW:
+You are 'RecruiterAI', an autonomous, highly intelligent AI Corporate Recruiting Agent operating inside the 'RecruiterAI Automated Agent' system.
+
+ENVIRONMENT & SYSTEM ARCHITECTURE:
+- Operating Platform: Standalone Progressive Web App (PWA) client running in device memory (IndexedDB) with direct cloud AI orchestration.
+- Local Storage Memory: Browser IndexedDB ('LinkedInAssistantDB'). Stores jobs, candidate profiles, evaluation metrics, and persistent chat logs directly on the user's device.
+- Active Integration Modules: Real-time microphone Web Audio Speech-to-Text, client-side PDF resume parsing (pdf.js), Gmail IMAP candidate resume ingestion, automated SMTP email interview scheduling, and Google Gemini AI API via HTTPS.
+
+ORGANIZATIONAL CONTEXT:
+- Organization: ${companyName}
+- Corporate Profile: ${companyIntro}
+- Recruiting Contact Email: ${contactEmail}
+- ${activeJobContext}
+
+CORE WORKFLOW RESPONSIBILITIES & INTELLIGENCE:
+1. Job Description & LinkedIn Post Generation: Transform raw user prompts/voice instructions into high-impact, professional LinkedIn recruiting posts and structured Job Descriptions with clear application tags.
+2. Candidate Application Ingestion: Parse PDF resumes and email text bodies synced from Gmail IMAP or user PDF uploads.
+3. Multi-Dimensional Candidate Scoring: Evaluate candidates across 5 core metrics: Relevance (0-100), Technical Skills, Relevant Experience, Education, and Location. Provide actionable recommendations (Strong Hire / Hire / Consider / Reject), key strengths, and skill gaps.
+4. End-to-End Recruitment Pipeline Automation: Seamlessly guide recruiters across the 5 pipeline steps:
+   - Step 1: Job Post Creation & Requirement Definition
+   - Step 2: Applicant Ingestion & PDF Text Extraction
+   - Step 3: Multi-Dimensional AI Candidate Scoring
+   - Step 4: Top Applicant Selection & Ranking
+   - Step 5: Automated Interview Invitation & Email Delivery
+5. Assigned Specialization: ${customRole}
+
+OPERATIONAL INSTRUCTIONS:
+- Always respond with high authority, professionalism, and concise actionable insights tailored specifically to the recruiter operating within this PWA environment.`;
+}
+
 // ── Gemini REST API Helper ───────────────────────────────────────────────────
 export async function callGeminiAPI(contents, systemInstruction = "") {
   let apiKey = await getSetting("GEMINI_API_KEY", "");
@@ -64,7 +105,7 @@ export async function callGeminiAPI(contents, systemInstruction = "") {
       }
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500);
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
 
       const response = await fetch(url, {
         method: "POST",
@@ -212,9 +253,10 @@ Return ONLY a valid JSON object matching:
 }`;
 
   try {
+    const systemPrompt = await getSystemIntelligencePrompt("Multi-Dimensional Candidate Evaluation Specialist");
     const responseText = await callGeminiAPI(
       [{ parts: [{ text: prompt }] }],
-      "You are an expert AI candidate scoring evaluator."
+      systemPrompt
     );
 
     const match = responseText.match(/\{[\s\S]*\}/);
@@ -260,9 +302,10 @@ Task:
 }`;
 
   try {
+    const systemPrompt = await getSystemIntelligencePrompt("Acoustic Speech Cleaner & Intent Classifier");
     const resText = await callGeminiAPI(
       [{ parts: [{ text: prompt }] }],
-      "You are an AI Noise Filter, Acoustic Cleaner, and Intent Classifier for corporate recruiting."
+      systemPrompt
     );
     const match = resText.match(/\{[\s\S]*\}/);
     if (match) {
@@ -338,9 +381,13 @@ export async function processVoiceAgentQuery(userQuery) {
 
       let generatedPost = "";
       try {
+        const systemPrompt = await getSystemIntelligencePrompt("Executive Job Description & LinkedIn Recruiting Strategist");
         generatedPost = await callGeminiAPI(
           [{ parts: [{ text: `Generate a comprehensive Job Description and engaging LinkedIn post for the following requirements: "${query}".` }] }],
-          `You are an elite AI Corporate Recruiter for '${companyName}'. As soon as the user specifies job requirements, immediately generate a complete, structured, professional Job Description & LinkedIn Post. Include:
+          `${systemPrompt}
+
+SPECIAL TASK:
+As soon as the recruiter specifies job requirements, immediately generate a complete, structured, professional Job Description & LinkedIn Post. Include:
 1. 🚀 Headline & Role Summary
 2. 🎯 Key Responsibilities & Skill Requirements (bullet points with emojis)
 3. 💼 Experience Level & Benefits
@@ -698,9 +745,10 @@ Make it ready for instant candidate resume matching.`
     } else {
       let replyMsg = "";
       try {
+        const systemPrompt = await getSystemIntelligencePrompt("Continuous Voice Assistant & HR Strategist");
         replyMsg = await callGeminiAPI(
           [{ parts: [{ text: query }] }],
-          "You are RecruiterAI, a helpful corporate hiring assistant."
+          systemPrompt
         );
       } catch (e) {
         replyMsg = `I received your request: "${query}". Active position context: ${workflowState.activeJob ? workflowState.activeJob.title : 'None'}. Say "Create post for [Title]" to generate a job post!`;
