@@ -805,6 +805,8 @@ window.clearAgentChatMemory = async function () {
   }
 };
 
+let accumulatedSpeechTranscript = "";
+
 window.startVoiceDictation = async function () {
   const masterBtn = document.getElementById("btn-master-voice");
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -828,52 +830,72 @@ window.startVoiceDictation = async function () {
     try {
       if (!workflowState.speechRecognition) {
         const recognition = new SpeechRecognition();
-        recognition.continuous = false;
-        recognition.interimResults = false;
+        recognition.continuous = true;
+        recognition.interimResults = true;
         recognition.lang = "en-US";
 
         recognition.onstart = () => {
           workflowState.isMasterListening = true;
           if (masterBtn) masterBtn.classList.add("listening");
           const label = document.getElementById("master-voice-label");
-          if (label) label.innerText = "Listening... Speak Now";
+          if (label) label.innerText = "Listening... Press to Stop & Submit";
           const orb = document.getElementById("agent-voice-orb");
           if (orb) orb.classList.add("listening");
         };
 
         recognition.onresult = (event) => {
-          const transcript = event.results[0][0].transcript;
-          processVoiceAgentQuery(transcript);
+          let currentTranscript = "";
+          for (let i = 0; i < event.results.length; i++) {
+            currentTranscript += event.results[i][0].transcript + " ";
+          }
+          accumulatedSpeechTranscript = currentTranscript.trim();
+
+          const inputEl = document.getElementById("agent-voice-input");
+          if (inputEl) {
+            inputEl.value = accumulatedSpeechTranscript;
+          }
         };
 
         recognition.onerror = (e) => {
-          console.warn("Speech recognition error:", e.error);
-          workflowState.isMasterListening = false;
-          if (masterBtn) masterBtn.classList.remove("listening");
-          const label = document.getElementById("master-voice-label");
-          if (label) label.innerText = "Dictate Voice";
-          const orb = document.getElementById("agent-voice-orb");
-          if (orb) orb.classList.remove("listening");
-
-          const fallback = prompt("Microphone access unavailable. Type your query for RecruiterAI:");
-          if (fallback) processVoiceAgentQuery(fallback);
+          console.warn("Speech recognition error notice:", e.error);
+          if (e.error === 'no-speech' && workflowState.isMasterListening) {
+            return;
+          }
         };
 
         recognition.onend = () => {
+          if (workflowState.isMasterListening) {
+            try {
+              recognition.start();
+              return;
+            } catch (err) {
+              console.warn("Speech restart notice:", err.message);
+            }
+          }
+
           workflowState.isMasterListening = false;
           if (masterBtn) masterBtn.classList.remove("listening");
           const label = document.getElementById("master-voice-label");
           if (label) label.innerText = "Dictate Voice";
           const orb = document.getElementById("agent-voice-orb");
           if (orb) orb.classList.remove("listening");
+
+          if (accumulatedSpeechTranscript && accumulatedSpeechTranscript.trim()) {
+            const finalQuery = accumulatedSpeechTranscript.trim();
+            accumulatedSpeechTranscript = "";
+            processVoiceAgentQuery(finalQuery);
+          }
         };
 
         workflowState.speechRecognition = recognition;
       }
 
       if (workflowState.isMasterListening) {
+        workflowState.isMasterListening = false;
         workflowState.speechRecognition.stop();
       } else {
+        accumulatedSpeechTranscript = "";
+        workflowState.isMasterListening = true;
         workflowState.speechRecognition.start();
       }
     } catch (e) {
