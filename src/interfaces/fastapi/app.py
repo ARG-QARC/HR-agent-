@@ -87,9 +87,8 @@ def create_app() -> FastAPI:
         if os.environ.get("VERCEL"):
             return JSONResponse(content={
                 "status": "partial",
-                "message": "Vercel Cloud Mode: Job post content copied to clipboard! Opening LinkedIn feed...",
-                "launch_method": "browser",
-                "redirect_url": "https://www.linkedin.com/feed/"
+                "message": "Cloud Mode: Post content copied to clipboard! Launching LinkedIn Desktop app...",
+                "launch_method": "app_uri"
             })
 
         try:

@@ -90,13 +90,9 @@ def _get_linkedin_app_window(desktop):
 
 def _launch_linkedin_app():
     """
-    Attempt to launch the LinkedIn Windows UWP app.
-
-    Falls back to opening LinkedIn in the default web browser if the UWP
-    app launch command fails (e.g., app not installed).
-
-    Returns:
-        str: "uwp" if UWP app was launched, "browser" if browser fallback was used.
+    Launch the native LinkedIn Windows desktop app via shell AppsFolder protocol.
+    If the shell protocol fails, falls back to the native windows URI protocol `linkedin://`.
+    Does NOT open web browsers or HTTP URLs.
     """
     try:
         subprocess.Popen(
@@ -104,15 +100,15 @@ def _launch_linkedin_app():
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         )
-        print("[LinkedIn Service] UWP app launch command sent.")
+        print("[LinkedIn Service] Desktop UWP app launch command sent via shell:AppsFolder.")
         return "uwp"
     except Exception as e:
-        print(f"[LinkedIn Service] UWP launch failed ({e}), falling back to browser.")
+        print(f"[LinkedIn Service] Shell launch notice ({e}), attempting URI protocol 'linkedin://'...")
         try:
-            os.startfile(LINKEDIN_WEB_URL)
+            os.system("start linkedin://")
         except Exception:
-            subprocess.Popen(["explorer.exe", LINKEDIN_WEB_URL])
-        return "browser"
+            subprocess.Popen(["cmd.exe", "/c", "start linkedin://"], shell=True)
+        return "uwp_uri"
 
 
 def _focus_window(app_win):

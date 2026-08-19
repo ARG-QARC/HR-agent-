@@ -21,7 +21,7 @@ import {
   getAllJobs, addJob, addCandidate,
   getCandidatesByJob, updateCandidate,
   getChatHistory, saveChatMessage, clearChatHistory
-} from './db.js?v=5';
+} from './db.js?v=6';
 
 function getApiBaseUrl() {
   if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
@@ -971,24 +971,20 @@ window.postToLinkedIn = async function (btnSuffix) {
     if (res.ok) {
       const data = await res.json();
 
-      if (data.redirect_url) {
+      if (data.status === "success") {
+        // Full success: LinkedIn app is open with content pasted in the editor
+        addAgentChatMessage("ai",
+          `✅ ${data.message}\n\n👆 Review your post on LinkedIn desktop app and click the <b>Post</b> button when ready.\n\nOnce posted, say <i>"I posted it"</i> or <i>"Done"</i> to continue the recruitment pipeline.`);
+        speakText("Post content is ready in LinkedIn desktop app. Review and click Post when you're satisfied.");
+      } else {
+        // Partial success or app URI fallback: trigger desktop app launch via protocol scheme
         try {
           await navigator.clipboard.writeText(postData.postText);
         } catch (clipErr) { }
-        window.open(data.redirect_url, "_blank");
+        window.location.href = "linkedin://";
         addAgentChatMessage("ai",
-          `✅ ${data.message}\n\n📋 Job post copied to clipboard! LinkedIn has been opened in a new tab. Press <b>Ctrl+V</b> to paste.\n\nSay <i>"I posted it"</i> or <i>"Done"</i> after posting.`);
-        speakText("Job post copied to clipboard. Opening LinkedIn.");
-      } else if (data.status === "success") {
-        // Full success: LinkedIn is open with content pasted in the editor
-        addAgentChatMessage("ai",
-          `✅ ${data.message}\n\n👆 Review your post on LinkedIn and click the <b>Post</b> button when ready.\n\nOnce posted, say <i>"I posted it"</i> or <i>"Done"</i> to continue the recruitment pipeline.`);
-        speakText("Post content is ready in LinkedIn. Review and click Post when you're satisfied.");
-      } else {
-        // Partial success: LinkedIn opened but some automation step failed
-        addAgentChatMessage("ai",
-          `⚠️ ${data.message}\n\nSay <i>"I posted it"</i> or <i>"Done"</i> after you've posted manually.`);
-        speakText(data.message);
+          `📋 Post content copied to clipboard! Launching LinkedIn Desktop app...\n\nPress <b>Ctrl+V</b> inside LinkedIn app to paste. Say <i>"I posted it"</i> or <i>"Done"</i> after posting.`);
+        speakText("Post copied to clipboard. Launching LinkedIn desktop app.");
       }
 
       // Set state to await LinkedIn confirmation from the user
@@ -997,24 +993,25 @@ window.postToLinkedIn = async function (btnSuffix) {
         workflowState.pendingPipelineResume = true;
       }
     } else {
-      // Backend returned an error status code — fall back to clipboard copy
+      // Backend returned an error status code — fall back to desktop app URI launch
       throw new Error(`Server returned ${res.status}`);
     }
   } catch (err) {
-    // Backend unreachable (mobile PWA, Vercel web deployment, network error)
-    console.warn("[LinkedIn Post] Backend notice:", err.message);
+    console.warn("[LinkedIn Post] Launching desktop app via URI protocol notice:", err.message);
 
-    // Graceful fallback: copy to clipboard and open LinkedIn in new tab
+    // Fallback: copy to clipboard and trigger native LinkedIn desktop app protocol
     try {
       await navigator.clipboard.writeText(postData.postText);
-      window.open("https://www.linkedin.com/feed/", "_blank");
+    } catch (clipErr) { }
+
+    try {
+      window.location.href = "linkedin://";
       addAgentChatMessage("ai",
-        `📋 Job post copied to clipboard! Opening LinkedIn in a new tab... Press <b>Ctrl+V</b> to paste your post.\n\nSay <i>"I posted it"</i> or <i>"Done"</i> after posting.`);
-      speakText("Post copied to clipboard. Opening LinkedIn.");
-    } catch (clipErr) {
-      window.open("https://www.linkedin.com/feed/", "_blank");
+        `📋 Job post copied to clipboard! Launching LinkedIn Desktop app...\n\nPress <b>Ctrl+V</b> in the LinkedIn app to paste your post. Say <i>"I posted it"</i> or <i>"Done"</i> after posting.`);
+      speakText("Post copied to clipboard. Launching LinkedIn desktop app.");
+    } catch (launchErr) {
       addAgentChatMessage("ai",
-        `⚠️ Opening LinkedIn in a new tab. Please copy the post text above and paste it on LinkedIn.`);
+        `📋 Job post copied to clipboard! Please open your LinkedIn Desktop app and press <b>Ctrl+V</b> to paste your post.\n\nSay <i>"I posted it"</i> or <i>"Done"</i> after posting.`);
     }
 
     workflowState.awaitingLinkedInConfirm = true;
