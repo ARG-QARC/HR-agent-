@@ -45,12 +45,35 @@ const DEFAULT_GEMINI_KEY = "";
 
 async function callGeminiAPI(contents, systemInstruction = "") {
   let apiKey = state.geminiKey || await getSetting("GEMINI_API_KEY", DEFAULT_GEMINI_KEY);
+  
   if (!apiKey || !apiKey.trim()) {
-    throw new Error("Gemini API key is required. Please set GEMINI_API_KEY in Settings.");
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/settings`);
+      if (res.ok) {
+        const remoteSettings = await res.json();
+        if (remoteSettings.GEMINI_API_KEY) {
+          apiKey = remoteSettings.GEMINI_API_KEY;
+          state.geminiKey = apiKey;
+          await setSetting("GEMINI_API_KEY", apiKey);
+        }
+      }
+    } catch (e) {
+      console.warn("Backend settings sync notice:", e);
+    }
   }
 
-  const models = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash-8b"];
-  let lastError = null;
+  if (!apiKey || !apiKey.trim()) {
+    throw new Error("Gemini API key is missing. Please enter your API key in Settings tab or configure GEMINI_API_KEY in .env.");
+  }
+
+  const models = [
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-pro",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash"
+  ];
+  let errors = [];
 
   for (const model of models) {
     try {
@@ -79,11 +102,11 @@ async function callGeminiAPI(contents, systemInstruction = "") {
       }
     } catch (err) {
       console.warn(`Gemini call error with ${model}:`, err.message);
-      lastError = err;
+      errors.push(`${model}: ${err.message}`);
     }
   }
 
-  throw lastError || new Error("All Gemini models failed.");
+  throw new Error(`All Gemini models failed. Details: ${errors.join(" | ")}`);
 }
 
 // ── Voice Dictation via Web Audio API ───────────────────────────────────────
@@ -1287,11 +1310,35 @@ async function initSettings() {
   const introInput = document.getElementById("setting-company-intro");
   const emailInput = document.getElementById("setting-contact-email");
 
-  // Load existing settings from IndexedDB; fallback to initial .env defaults
+  // Load existing settings from IndexedDB
   state.geminiKey = await getSetting("GEMINI_API_KEY", "");
   state.companyName = await getSetting("COMPANY_NAME", "Al Rahim Group");
   state.companyIntro = await getSetting("COMPANY_INTRO", "A leading business conglomerate specializing in global trade, engineering, and manufacturing.");
   state.contactEmail = await getSetting("CONTACT_EMAIL", "danish.alrahimgroup@gmail.com");
+
+  // Fallback to backend /api/settings if API key is not yet in IndexedDB
+  if (!state.geminiKey) {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/settings`);
+      if (res.ok) {
+        const remoteSettings = await res.json();
+        if (remoteSettings.GEMINI_API_KEY) {
+          state.geminiKey = remoteSettings.GEMINI_API_KEY;
+          await setSetting("GEMINI_API_KEY", state.geminiKey);
+        }
+        if (remoteSettings.COMPANY_NAME && state.companyName === "Al Rahim Group") {
+          state.companyName = remoteSettings.COMPANY_NAME;
+          await setSetting("COMPANY_NAME", state.companyName);
+        }
+        if (remoteSettings.CONTACT_EMAIL && state.contactEmail === "danish.alrahimgroup@gmail.com") {
+          state.contactEmail = remoteSettings.CONTACT_EMAIL;
+          await setSetting("CONTACT_EMAIL", state.contactEmail);
+        }
+      }
+    } catch (e) {
+      console.warn("Backend settings sync notice:", e);
+    }
+  }
 
   // Populate input fields with saved or default initial values
   if (keyInput) keyInput.value = state.geminiKey;

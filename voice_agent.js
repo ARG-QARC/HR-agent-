@@ -17,11 +17,11 @@
  */
 
 import {
-  getSetting,
+  getSetting, setSetting,
   getAllJobs, addJob, addCandidate,
   getCandidatesByJob, updateCandidate,
   getChatHistory, saveChatMessage, clearChatHistory
-} from './db.js?v=3';
+} from './db.js?v=5';
 
 function getApiBaseUrl() {
   if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
@@ -91,12 +91,34 @@ OPERATIONAL INSTRUCTIONS:
 // ── Gemini REST API Helper ───────────────────────────────────────────────────
 export async function callGeminiAPI(contents, systemInstruction = "") {
   let apiKey = await getSetting("GEMINI_API_KEY", "");
+  
   if (!apiKey || !apiKey.trim()) {
-    throw new Error("No Gemini API key configured. Please enter your Google AI Studio key (starts with AIzaSy) in Cloud & Settings tab.");
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/settings`);
+      if (res.ok) {
+        const remoteSettings = await res.json();
+        if (remoteSettings.GEMINI_API_KEY) {
+          apiKey = remoteSettings.GEMINI_API_KEY;
+          await setSetting("GEMINI_API_KEY", apiKey);
+        }
+      }
+    } catch (e) {
+      console.warn("Backend settings sync notice:", e);
+    }
   }
 
-  const models = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash-8b"];
-  let lastError = null;
+  if (!apiKey || !apiKey.trim()) {
+    throw new Error("No Gemini API key configured. Please enter your Google AI Studio key in Cloud & Settings tab or .env file.");
+  }
+
+  const models = [
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-pro",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash"
+  ];
+  let errors = [];
 
   for (const model of models) {
     try {
@@ -129,11 +151,11 @@ export async function callGeminiAPI(contents, systemInstruction = "") {
       }
     } catch (err) {
       console.warn(`Gemini call error with ${model}:`, err.message);
-      lastError = err;
+      errors.push(`${model}: ${err.message}`);
     }
   }
 
-  throw lastError || new Error("All Gemini models failed.");
+  throw new Error(`All Gemini models failed. Details: ${errors.join(" | ")}`);
 }
 
 // ── UI Context Updates ───────────────────────────────────────────────────────
@@ -324,6 +346,7 @@ Task:
     }
   } catch (e) {
     console.warn("LLM Transcript Cleaning & Job Extraction notice:", e.message);
+    return { cleaned_text: rawTranscript, intent: null, job_title: null, job_description: null, error: e.message };
   }
   return { cleaned_text: rawTranscript, intent: null, job_title: null, job_description: null };
 }
@@ -440,6 +463,7 @@ Make it ready for instant candidate resume matching.`
           );
         } catch (geminiErr) {
           console.warn("Gemini call error fallback:", geminiErr.message);
+          addAgentChatMessage("system", `⚠️ <b>AI Intelligence Warning:</b> Could not reach Gemini API (${geminiErr.message}). Displaying local template fallback. Please verify your GEMINI_API_KEY in Cloud & Settings.`);
           generatedPost = `🚀 WE ARE HIRING: ${extractedTitle.toUpperCase()} at ${companyName}!\n\nWe are seeking a qualified ${extractedTitle} to join our growing corporate team.\n\nRequirements & Details:\n• ${query}\n• Strong corporate background and analytical expertise\n• Excellent teamwork and communication skills\n\n👉 TO APPLY: Send your resume to ${contactEmail} with subject line containing '${subjectTag}'.`;
         }
       }
@@ -947,7 +971,15 @@ window.postToLinkedIn = async function (btnSuffix) {
     if (res.ok) {
       const data = await res.json();
 
-      if (data.status === "success") {
+      if (data.redirect_url) {
+        try {
+          await navigator.clipboard.writeText(postData.postText);
+        } catch (clipErr) { }
+        window.open(data.redirect_url, "_blank");
+        addAgentChatMessage("ai",
+          `✅ ${data.message}\n\n📋 Job post copied to clipboard! LinkedIn has been opened in a new tab. Press <b>Ctrl+V</b> to paste.\n\nSay <i>"I posted it"</i> or <i>"Done"</i> after posting.`);
+        speakText("Job post copied to clipboard. Opening LinkedIn.");
+      } else if (data.status === "success") {
         // Full success: LinkedIn is open with content pasted in the editor
         addAgentChatMessage("ai",
           `✅ ${data.message}\n\n👆 Review your post on LinkedIn and click the <b>Post</b> button when ready.\n\nOnce posted, say <i>"I posted it"</i> or <i>"Done"</i> to continue the recruitment pipeline.`);
@@ -969,18 +1001,20 @@ window.postToLinkedIn = async function (btnSuffix) {
       throw new Error(`Server returned ${res.status}`);
     }
   } catch (err) {
-    // Backend unreachable (mobile PWA, no local server, network error)
-    console.warn("[LinkedIn Post] Backend unreachable:", err.message);
+    // Backend unreachable (mobile PWA, Vercel web deployment, network error)
+    console.warn("[LinkedIn Post] Backend notice:", err.message);
 
-    // Graceful fallback: copy to clipboard and provide manual instructions
+    // Graceful fallback: copy to clipboard and open LinkedIn in new tab
     try {
       await navigator.clipboard.writeText(postData.postText);
+      window.open("https://www.linkedin.com/feed/", "_blank");
       addAgentChatMessage("ai",
-        `⚠️ Could not connect to the local automation server (${err.message}).\n\n📋 Post has been <b>copied to clipboard</b> instead. Open LinkedIn manually and press <b>Ctrl+V</b> to paste.\n\nSay <i>"I posted it"</i> or <i>"Done"</i> after posting.`);
-      speakText("Could not connect to the automation server. Post copied to clipboard. Paste it on LinkedIn manually.");
+        `📋 Job post copied to clipboard! Opening LinkedIn in a new tab... Press <b>Ctrl+V</b> to paste your post.\n\nSay <i>"I posted it"</i> or <i>"Done"</i> after posting.`);
+      speakText("Post copied to clipboard. Opening LinkedIn.");
     } catch (clipErr) {
+      window.open("https://www.linkedin.com/feed/", "_blank");
       addAgentChatMessage("ai",
-        `⚠️ Could not connect to the automation server and clipboard access failed. Please copy the post text manually from above.`);
+        `⚠️ Opening LinkedIn in a new tab. Please copy the post text above and paste it on LinkedIn.`);
     }
 
     workflowState.awaitingLinkedInConfirm = true;

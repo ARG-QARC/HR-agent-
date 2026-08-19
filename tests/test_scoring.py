@@ -6,7 +6,7 @@ from src.infrastructure.ai.gemini_client import get_models
 def test_gemini_models_list():
     models = get_models()
     assert isinstance(models, list)
-    assert "gemini-1.5-flash" in models
+    assert "gemini-2.5-flash" in models
     assert "gemini-2.0-flash" in models
 
 def test_score_handles_missing_api_key():

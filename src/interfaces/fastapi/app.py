@@ -81,13 +81,17 @@ def create_app() -> FastAPI:
         Automate opening the LinkedIn desktop app, navigating to the post
         editor, and pasting the job description content into it.
 
-        This endpoint does NOT click the final 'Post' button on LinkedIn.
-        The user retains full manual control over the final publish action,
-        allowing them to review formatting, add hashtags, or cancel.
-
-        The blocking desktop automation runs in a background thread via
-        asyncio.to_thread so the FastAPI event loop is not blocked.
+        If running in Vercel Cloud Serverless environment, returns web mode
+        instructions so client opens LinkedIn feed in browser.
         """
+        if os.environ.get("VERCEL"):
+            return JSONResponse(content={
+                "status": "partial",
+                "message": "Vercel Cloud Mode: Job post content copied to clipboard! Opening LinkedIn feed...",
+                "launch_method": "browser",
+                "redirect_url": "https://www.linkedin.com/feed/"
+            })
+
         try:
             result = await asyncio.to_thread(
                 linkedin_auto_post, payload.post_text, payload.job_title
