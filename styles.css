@@ -629,3 +629,90 @@ textarea {
   gap: 6px;
 }
 
+/* ── LinkedIn Auto-Post Action Buttons (rendered inside agent chat messages) ── */
+.linkedin-action-btns {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.linkedin-action-btns button {
+  font-family: var(--font-family);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 22px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  outline: none;
+}
+
+/* Primary LinkedIn-branded button (gradient blue) */
+.linkedin-action-btns .btn-linkedin-post {
+  background: linear-gradient(135deg, #0077B5 0%, #005E93 100%);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 119, 181, 0.3);
+}
+
+.linkedin-action-btns .btn-linkedin-post:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 119, 181, 0.5);
+}
+
+.linkedin-action-btns .btn-linkedin-post:active {
+  transform: translateY(0);
+}
+
+/* Secondary Copy & Continue button (outlined accent) */
+.linkedin-action-btns .btn-copy-continue {
+  background: rgba(56, 189, 248, 0.12);
+  color: var(--accent-cyan);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.linkedin-action-btns .btn-copy-continue:hover {
+  background: rgba(56, 189, 248, 0.25);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(56, 189, 248, 0.2);
+}
+
+.linkedin-action-btns .btn-copy-continue:active {
+  transform: translateY(0);
+}
+
+/* Disabled state for buttons after one is clicked */
+.linkedin-action-btns button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Loading spinner shown while LinkedIn automation is in progress */
+.linkedin-action-btns .btn-linkedin-loading {
+  position: relative;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+.linkedin-action-btns .btn-linkedin-loading::after {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-left: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: linkedinBtnSpin 0.7s linear infinite;
+}
+
+@keyframes linkedinBtnSpin {
+  to { transform: rotate(360deg); }
+}
+

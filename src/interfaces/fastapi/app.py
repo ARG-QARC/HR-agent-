@@ -13,6 +13,7 @@ from src.infrastructure.database import database, models
 from src.application.job_service import JobService
 from src.application.candidate_service import CandidateService
 from src.application.interview_service import InterviewService
+from src.application.linkedin_service import linkedin_auto_post
 
 def create_app() -> FastAPI:
     app = FastAPI(title="HR Agent API", version="2.0.0")
@@ -56,6 +57,11 @@ def create_app() -> FastAPI:
         interview_location: Optional[str] = "Google Meet / Zoom"
         notes: Optional[str] = ""
 
+    class LinkedInPostPayload(BaseModel):
+        """Request body for the LinkedIn auto-post endpoint."""
+        post_text: str
+        job_title: Optional[str] = "Job Position"
+
     @app.get("/api/health")
     def health_check():
         return {"status": "online", "system": "HR Agent Clean Architecture"}
@@ -68,6 +74,34 @@ def create_app() -> FastAPI:
             "COMPANY_INTRO": os.environ.get("COMPANY_INTRO", "").strip('"' + "'").strip(),
             "CONTACT_EMAIL": os.environ.get("CONTACT_EMAIL", "danish.alrahimgroup@gmail.com").strip('"' + "'").strip()
         }
+
+    @app.post("/api/linkedin-post")
+    async def post_to_linkedin(payload: LinkedInPostPayload):
+        """
+        Automate opening the LinkedIn desktop app, navigating to the post
+        editor, and pasting the job description content into it.
+
+        This endpoint does NOT click the final 'Post' button on LinkedIn.
+        The user retains full manual control over the final publish action,
+        allowing them to review formatting, add hashtags, or cancel.
+
+        The blocking desktop automation runs in a background thread via
+        asyncio.to_thread so the FastAPI event loop is not blocked.
+        """
+        try:
+            result = await asyncio.to_thread(
+                linkedin_auto_post, payload.post_text, payload.job_title
+            )
+            return JSONResponse(content=result)
+        except Exception as e:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "message": f"LinkedIn automation failed: {str(e)}",
+                    "launch_method": "none"
+                }
+            )
 
     @app.get("/api/jobs")
     def get_jobs(db: Session = Depends(database.get_db)):

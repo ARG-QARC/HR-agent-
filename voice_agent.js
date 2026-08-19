@@ -41,7 +41,10 @@ export let workflowState = {
   currentStep: 1,
   ttsEnabled: true,
   isMasterListening: false,
-  speechRecognition: null
+  speechRecognition: null,
+  // LinkedIn auto-post workflow flags
+  awaitingLinkedInConfirm: false,   // True when waiting for user to confirm they posted on LinkedIn
+  pendingPipelineResume: false      // True when RUN_FULL_PIPELINE is paused waiting for LinkedIn action
 };
 
 // ── System Intelligence & Architectural Context Prompt Builder ─────────────
@@ -334,6 +337,36 @@ export async function processVoiceAgentQuery(userQuery) {
   addAgentChatMessage("user", query, false);
   saveChatMessage("user", query).catch(e => console.warn(e));
 
+  // ── LinkedIn Post Confirmation Detection ──────────────────────────────────
+  // If the agent is waiting for the user to confirm they've posted on LinkedIn,
+  // intercept confirmation phrases and resume the workflow before running
+  // through the full LLM intent classification pipeline.
+  const lowerQueryCheck = query.toLowerCase();
+  if (workflowState.awaitingLinkedInConfirm &&
+    (lowerQueryCheck.includes("posted") || lowerQueryCheck.includes("done") ||
+     lowerQueryCheck.includes("published") || lowerQueryCheck.includes("shared") ||
+     lowerQueryCheck.includes("i posted") || lowerQueryCheck.includes("it's posted") ||
+     lowerQueryCheck.includes("post is live") || lowerQueryCheck.includes("already posted"))) {
+    workflowState.awaitingLinkedInConfirm = false;
+
+    // If the full pipeline was paused at Step 1-2, resume it from Step 3
+    if (workflowState.pendingPipelineResume) {
+      workflowState.pendingPipelineResume = false;
+      addAgentChatMessage("ai",
+        `🎉 Great! Your job post is now live on LinkedIn. Resuming the full recruitment pipeline from <b>Step 3: Fetch Resumes</b>...`);
+      speakText("Excellent! Your LinkedIn post is live. Resuming the recruitment pipeline.");
+      // Trigger pipeline resume from Step 3 onwards
+      await _resumePipelineFromStep3();
+      return;
+    }
+
+    // Standard confirmation — just acknowledge and let the user proceed manually
+    addAgentChatMessage("ai",
+      `🎉 Great! Your job post is now live on LinkedIn. Continuing recruitment workflow — say <i>"Score candidates"</i> or <i>"Fetch resumes"</i> to proceed!`);
+    speakText("Excellent! Your LinkedIn post is live. Ready to continue the recruitment pipeline.");
+    return;
+  }
+
   // 2. Immediately render AI thinking indicator
   addAgentChatMessage("ai", "<i>🤖 Filtering noise & analyzing request...</i>", false);
 
@@ -432,10 +465,23 @@ Make it ready for instant candidate resume matching.`
         await window.refreshJobsUI().catch(e => console.warn(e));
       }
 
-      const replyMsg = `✅ Generated and saved job position post for <b>${extractedTitle}</b> (ID: ${job_id}) to device memory!\n\n<pre style="white-space: pre-wrap; background: rgba(15,23,42,0.7); padding: 12px; border-radius: 8px; margin-top: 8px; font-family: inherit; font-size: 13px; border: 1px solid rgba(56,189,248,0.2);">${generatedPost}</pre>\n\nNext, upload candidate PDFs or say <i>"Score candidates"</i>!`;
+      // Build the unique button ID suffix to prevent clashes with previous messages
+      const btnSuffix = Date.now();
+
+      // Escape the generated post for safe embedding in a data attribute
+      const escapedPost = generatedPost.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+      const replyMsg = `✅ Generated and saved job position post for <b>${extractedTitle}</b> (ID: ${job_id}) to device memory!\n\n<pre style="white-space: pre-wrap; background: rgba(15,23,42,0.7); padding: 12px; border-radius: 8px; margin-top: 8px; font-family: inherit; font-size: 13px; border: 1px solid rgba(56,189,248,0.2);">${generatedPost}</pre>\n\n<div class="linkedin-action-btns" id="linkedin-btns-${btnSuffix}"><button class="btn-linkedin-post" onclick="window.postToLinkedIn('${btnSuffix}')" id="btn-li-post-${btnSuffix}">🔗 Post to LinkedIn</button><button class="btn-copy-continue" onclick="window.copyAndContinue('${btnSuffix}')" id="btn-li-copy-${btnSuffix}">📋 Copy & Continue</button></div>`;
+
+      // Store the post data on the window so the button handlers can access it
+      window[`_liPostData_${btnSuffix}`] = {
+        postText: generatedPost,
+        jobTitle: extractedTitle,
+        isPipeline: false
+      };
 
       addAgentChatMessage("ai", replyMsg);
-      speakText(`Generated and saved job position post for ${extractedTitle}.`);
+      speakText(`Generated and saved job position post for ${extractedTitle}. You can post it to LinkedIn or copy it to clipboard.`);
 
     } else if (intent === "SCORE_CANDIDATES") {
       removeThinkingIndicator();
@@ -665,6 +711,26 @@ Make it ready for instant candidate resume matching.`
       updateAgentContextUI();
       if (typeof window.refreshJobsUI === "function") await window.refreshJobsUI().catch(() => { });
 
+      // ── Pipeline Pause: Show LinkedIn action buttons ──────────────────────
+      // Pause the pipeline here so the user can post to LinkedIn before
+      // proceeding to Step 3 (Fetch resumes). The pipeline will resume when
+      // the user clicks "Copy & Continue" or confirms they posted.
+      const pipelineBtnSuffix = Date.now();
+      const pipelineEscapedPost = (workflowState.activeJob.description || "").replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+      window[`_liPostData_${pipelineBtnSuffix}`] = {
+        postText: workflowState.activeJob.description || "",
+        jobTitle: workflowState.activeJob.title || "Job Position",
+        isPipeline: true
+      };
+
+      const pipelinePostMsg = `📝 Job post ready for <b>${workflowState.activeJob.title}</b>:\n\n<pre style="white-space: pre-wrap; background: rgba(15,23,42,0.7); padding: 12px; border-radius: 8px; margin-top: 8px; font-family: inherit; font-size: 13px; border: 1px solid rgba(56,189,248,0.2);">${workflowState.activeJob.description}</pre>\n\n<div class="linkedin-action-btns" id="linkedin-btns-${pipelineBtnSuffix}"><button class="btn-linkedin-post" onclick="window.postToLinkedIn('${pipelineBtnSuffix}')" id="btn-li-post-${pipelineBtnSuffix}">🔗 Post to LinkedIn</button><button class="btn-copy-continue" onclick="window.copyAndContinue('${pipelineBtnSuffix}')" id="btn-li-copy-${pipelineBtnSuffix}">📋 Copy & Continue Pipeline</button></div>`;
+
+      addAgentChatMessage("ai", pipelinePostMsg);
+      speakText(`Job post ready for ${workflowState.activeJob.title}. Post to LinkedIn or copy and continue the pipeline.`);
+      // Stop pipeline execution here — it will be resumed by the button handlers
+      return;
+
       // Step 3: Fetch resumes
       addAgentChatMessage("system", "⚡ <b>Pipeline Step 3:</b> Fetching email resumes...");
       setPipelineStep(3);
@@ -817,6 +883,255 @@ window.clearAgentChatMemory = async function () {
     }
   }
 };
+
+// ── LinkedIn Auto-Post Window Handlers ────────────────────────────────────────
+// These functions are called by the inline action buttons rendered in chat
+// messages after a job post is generated. They are attached to the window
+// object so they can be invoked from onclick attributes in dynamic HTML.
+
+/**
+ * Disables both LinkedIn action buttons in the chat message to prevent
+ * duplicate clicks after the user has already chosen an action.
+ *
+ * @param {string} btnSuffix - The unique timestamp suffix identifying the button pair.
+ */
+function _disableLinkedInButtons(btnSuffix) {
+  const postBtn = document.getElementById(`btn-li-post-${btnSuffix}`);
+  const copyBtn = document.getElementById(`btn-li-copy-${btnSuffix}`);
+  if (postBtn) postBtn.disabled = true;
+  if (copyBtn) copyBtn.disabled = true;
+}
+
+/**
+ * Posts the generated job content to LinkedIn by calling the backend automation
+ * API endpoint. The backend opens the LinkedIn desktop app, navigates to the
+ * "Start a post" editor, and pastes the content. The user must manually click
+ * the final "Post" button on LinkedIn.
+ *
+ * If the backend is unreachable (e.g., mobile PWA, no local server), falls back
+ * to copying the post to the clipboard with an instructional message.
+ *
+ * @param {string} btnSuffix - The unique timestamp suffix used to retrieve stored post data.
+ */
+window.postToLinkedIn = async function (btnSuffix) {
+  const postData = window[`_liPostData_${btnSuffix}`];
+  if (!postData) {
+    addAgentChatMessage("ai", "⚠️ Post data not found. Please try generating the post again.");
+    return;
+  }
+
+  // Disable buttons immediately to prevent duplicate clicks
+  _disableLinkedInButtons(btnSuffix);
+
+  // Show loading state on the LinkedIn button
+  const postBtn = document.getElementById(`btn-li-post-${btnSuffix}`);
+  if (postBtn) {
+    postBtn.classList.add("btn-linkedin-loading");
+    postBtn.innerHTML = "🔗 Opening LinkedIn...";
+  }
+
+  addAgentChatMessage("system", "⚡ <i>Opening LinkedIn app and pasting your post content...</i>");
+  speakText("Opening LinkedIn to post your job description.");
+
+  try {
+    // Call the backend LinkedIn auto-post API endpoint
+    const res = await fetch(`${getApiBaseUrl()}/api/linkedin-post`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        post_text: postData.postText,
+        job_title: postData.jobTitle
+      })
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+
+      if (data.status === "success") {
+        // Full success: LinkedIn is open with content pasted in the editor
+        addAgentChatMessage("ai",
+          `✅ ${data.message}\n\n👆 Review your post on LinkedIn and click the <b>Post</b> button when ready.\n\nOnce posted, say <i>"I posted it"</i> or <i>"Done"</i> to continue the recruitment pipeline.`);
+        speakText("Post content is ready in LinkedIn. Review and click Post when you're satisfied.");
+      } else {
+        // Partial success: LinkedIn opened but some automation step failed
+        addAgentChatMessage("ai",
+          `⚠️ ${data.message}\n\nSay <i>"I posted it"</i> or <i>"Done"</i> after you've posted manually.`);
+        speakText(data.message);
+      }
+
+      // Set state to await LinkedIn confirmation from the user
+      workflowState.awaitingLinkedInConfirm = true;
+      if (postData.isPipeline) {
+        workflowState.pendingPipelineResume = true;
+      }
+    } else {
+      // Backend returned an error status code — fall back to clipboard copy
+      throw new Error(`Server returned ${res.status}`);
+    }
+  } catch (err) {
+    // Backend unreachable (mobile PWA, no local server, network error)
+    console.warn("[LinkedIn Post] Backend unreachable:", err.message);
+
+    // Graceful fallback: copy to clipboard and provide manual instructions
+    try {
+      await navigator.clipboard.writeText(postData.postText);
+      addAgentChatMessage("ai",
+        `⚠️ Could not connect to the local automation server (${err.message}).\n\n📋 Post has been <b>copied to clipboard</b> instead. Open LinkedIn manually and press <b>Ctrl+V</b> to paste.\n\nSay <i>"I posted it"</i> or <i>"Done"</i> after posting.`);
+      speakText("Could not connect to the automation server. Post copied to clipboard. Paste it on LinkedIn manually.");
+    } catch (clipErr) {
+      addAgentChatMessage("ai",
+        `⚠️ Could not connect to the automation server and clipboard access failed. Please copy the post text manually from above.`);
+    }
+
+    workflowState.awaitingLinkedInConfirm = true;
+    if (postData.isPipeline) {
+      workflowState.pendingPipelineResume = true;
+    }
+  }
+
+  // Remove loading state
+  if (postBtn) {
+    postBtn.classList.remove("btn-linkedin-loading");
+    postBtn.innerHTML = "✅ LinkedIn Opened";
+  }
+
+  // Clean up stored post data
+  delete window[`_liPostData_${btnSuffix}`];
+};
+
+/**
+ * Copies the generated post text to the system clipboard and continues the
+ * workflow immediately. If this was triggered during a RUN_FULL_PIPELINE,
+ * the pipeline is resumed from Step 3 (Fetch resumes).
+ *
+ * @param {string} btnSuffix - The unique timestamp suffix used to retrieve stored post data.
+ */
+window.copyAndContinue = async function (btnSuffix) {
+  const postData = window[`_liPostData_${btnSuffix}`];
+  if (!postData) {
+    addAgentChatMessage("ai", "⚠️ Post data not found. Please try generating the post again.");
+    return;
+  }
+
+  // Disable buttons immediately to prevent duplicate clicks
+  _disableLinkedInButtons(btnSuffix);
+
+  // Copy post text to clipboard
+  try {
+    await navigator.clipboard.writeText(postData.postText);
+  } catch (err) {
+    console.warn("[Copy & Continue] Clipboard write failed:", err);
+  }
+
+  // Clean up stored post data
+  delete window[`_liPostData_${btnSuffix}`];
+
+  if (postData.isPipeline) {
+    // Pipeline mode: acknowledge and resume from Step 3 immediately
+    addAgentChatMessage("ai",
+      `📋 Post copied to clipboard! Paste it on LinkedIn whenever you're ready.\n\n⚡ <i>Resuming full pipeline from Step 3: Fetch Resumes...</i>`);
+    speakText("Post copied to clipboard. Resuming the recruitment pipeline.");
+    await _resumePipelineFromStep3();
+  } else {
+    // Standalone CREATE_POST mode: acknowledge and let user proceed manually
+    addAgentChatMessage("ai",
+      `📋 Post copied to clipboard! Paste it on LinkedIn or any platform whenever you're ready.\n\nContinuing workflow — say <i>"Score candidates"</i> or <i>"Fetch resumes"</i> to proceed!`);
+    speakText("Post copied to clipboard. Ready to continue.");
+  }
+};
+
+/**
+ * Resumes the RUN_FULL_PIPELINE from Step 3 onwards after the user has
+ * either posted to LinkedIn or chosen to copy and continue.
+ *
+ * This is an internal function that replicates the pipeline logic from
+ * Step 3 (Fetch resumes) through Step 5 (Interview invitation), which
+ * was previously inline in the RUN_FULL_PIPELINE handler.
+ */
+async function _resumePipelineFromStep3() {
+  // Step 3: Fetch resumes from Gmail via backend
+  addAgentChatMessage("system", "⚡ <b>Pipeline Step 3:</b> Fetching email resumes...");
+  setPipelineStep(3);
+  try {
+    const baseUrl = getApiBaseUrl();
+    const localJobs = await getAllJobs();
+    for (const j of localJobs) {
+      await fetch(`${baseUrl}/api/jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(j)
+      }).catch(() => null);
+    }
+    const syncRes = await fetch(`${baseUrl}/api/sync-resumes`, { method: "POST" }).catch(() => null);
+    if (syncRes && syncRes.ok) {
+      const syncData = await syncRes.json();
+      addAgentChatMessage("system", `⚡ Fetched ${syncData.synced_count || 0} resume(s) from Gmail.`);
+      for (const j of localJobs) {
+        const candRes = await fetch(`${baseUrl}/api/candidates/${j.job_id}`).catch(() => null);
+        if (candRes && candRes.ok) {
+          const remoteCands = await candRes.json();
+          for (const c of remoteCands) {
+            await addCandidate({
+              job_id: c.job_id, name: c.name, email: c.email,
+              resume_name: c.resume_path ? c.resume_path.split('\\').pop().split('/').pop() : `${c.name}.pdf`,
+              parsed_text: c.parsed_text, relevance_score: c.relevance_score,
+              skills_score: c.skills_score, experience_score: c.experience_score,
+              education_score: c.education_score, location_score: c.location_score,
+              recommendation: c.recommendation,
+              strengths: c.strengths ? c.strengths.split('\n') : [],
+              gaps: c.gaps ? c.gaps.split('\n') : [],
+              summary: c.summary, status: c.status,
+              applied_at: c.applied_at || new Date().toISOString()
+            });
+          }
+        }
+      }
+    } else {
+      addAgentChatMessage("system", "📱 Operating in standalone PWA mode using local device memory.");
+    }
+  } catch (e) {
+    addAgentChatMessage("system", "📱 Operating in standalone PWA mode using local device memory.");
+  }
+
+  // Step 4: Score candidates using multi-dimensional AI evaluation
+  addAgentChatMessage("system", "⚡ <b>Pipeline Step 4:</b> Scoring candidates...");
+  setPipelineStep(4);
+  const cands = workflowState.activeJob ? await getCandidatesByJob(workflowState.activeJob.job_id) : [];
+  for (const cand of cands) {
+    if (!cand.relevance_score) {
+      const evalRes = await scoreCandidateClientSide(workflowState.activeJob, cand);
+      Object.assign(cand, evalRes);
+      await updateCandidate(cand);
+    }
+  }
+  workflowState.candidates = (await getCandidatesByJob(workflowState.activeJob.job_id))
+    .sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0));
+  updateAgentContextUI();
+  if (typeof window.refreshJobsUI === "function") await window.refreshJobsUI().catch(() => { });
+
+  if (workflowState.candidates.length === 0) {
+    addAgentChatMessage("ai", "Pipeline paused: no candidates found. Upload PDFs or configure Gmail sync, then say <i>\"Score candidates\"</i>.");
+    return;
+  }
+
+  // Step 5: Open interview invitation dialog for the top-ranked candidate
+  addAgentChatMessage("system", "⚡ <b>Pipeline Step 5:</b> Opening interview invitation for top candidate...");
+  setPipelineStep(5);
+  const topCand = workflowState.candidates[0];
+  const modal = document.getElementById("interview-modal");
+  if (modal) {
+    const compName = await getSetting("COMPANY_NAME", "Al Rahim Group");
+    document.getElementById("interview-cand-id").value = topCand.candidate_id || '';
+    document.getElementById("interview-cand-name").value = topCand.name || 'Candidate';
+    document.getElementById("interview-cand-email").value = topCand.email || '';
+    document.getElementById("interview-notes").value = `Invitation for ${workflowState.activeJob.title} at ${compName}.\nMatch Score: ${topCand.relevance_score || 90}%`;
+    modal.style.display = "flex";
+  }
+
+  const finalMsg = `🎉 <b>Full pipeline complete!</b> Top candidate: <b>${topCand.name}</b> (${topCand.relevance_score}/100). Review the interview dialog and click <b>Send Interview Call Email</b> to finish.`;
+  addAgentChatMessage("ai", finalMsg);
+  speakText(`Full pipeline complete. Top candidate is ${topCand.name}. Review and send the interview email.`);
+}
 
 let accumulatedSpeechTranscript = "";
 
