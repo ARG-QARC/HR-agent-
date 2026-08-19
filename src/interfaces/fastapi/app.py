@@ -60,6 +60,15 @@ def create_app() -> FastAPI:
     def health_check():
         return {"status": "online", "system": "HR Agent Clean Architecture"}
 
+    @app.get("/api/settings")
+    def get_settings():
+        return {
+            "GEMINI_API_KEY": os.environ.get("GEMINI_API_KEY", "").strip('"' + "'").strip(),
+            "COMPANY_NAME": os.environ.get("COMPANY_NAME", "Al Rahim Group").strip('"' + "'").strip(),
+            "COMPANY_INTRO": os.environ.get("COMPANY_INTRO", "").strip('"' + "'").strip(),
+            "CONTACT_EMAIL": os.environ.get("CONTACT_EMAIL", "danish.alrahimgroup@gmail.com").strip('"' + "'").strip()
+        }
+
     @app.get("/api/jobs")
     def get_jobs(db: Session = Depends(database.get_db)):
         jobs = JobService.get_all_jobs(db)

@@ -1,4 +1,6 @@
 .env
+.env.local
+.vercel/
 *.db
 *.sqlite
 *.sqlite3

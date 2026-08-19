@@ -287,22 +287,30 @@ Return ONLY a valid JSON object matching:
 
 // ── LLM Noise Cleaner & Intent Classifier ───────────────────────────────────
 export async function cleanTranscriptAndDetectIntent(rawTranscript) {
-  const prompt = `Analyze and clean up the following raw speech-to-text transcript. The transcript was captured from a microphone in a live environment and may contain background noise artifacts, filler words (um, ah, like, you know), acoustic misrecognitions, or fragmented syntax.
+  const companyName = await getSetting("COMPANY_NAME", "Al Rahim Group");
+  const contactEmail = await getSetting("CONTACT_EMAIL", "danish.alrahimgroup@gmail.com");
+
+  const prompt = `This is a raw speech-to-text transcript captured from the user's microphone in a live recruiting environment. It may contain background noise artifacts, acoustic transcription errors, filler words (um, ah, like, you know), or fragmented syntax.
 
 Raw Voice Transcript: "${rawTranscript}"
 
 Task:
-1. Filter out background noise, filler words, and acoustic transcription errors.
-2. Determine the user's exact true intent and extracted role/requirements.
-3. Return ONLY a valid JSON object matching:
+1. Filter out background noise, filler words, and acoustic transcription errors to get the true user intent.
+2. Determine the user's intent: "CREATE_POST" | "SCORE_CANDIDATES" | "SCHEDULE_INTERVIEW" | "FETCH_RESUMES" | "STATUS" | "CHAT" | "RUN_FULL_PIPELINE".
+3. IF the user is asking to create, post, or draft a job position (or providing job role/requirements):
+   - Extract the exact, clean official Job Title (e.g. "Senior Data Scientist").
+   - Generate a complete, professional, structured Job Description and engaging LinkedIn post incorporating all user-specified requirements, skills, experience level, and responsibilities.
+   - Include apply instructions: "Send resume to ${contactEmail} with Subject containing 'ARG-[Job-Title]'".
+4. Return ONLY a valid JSON object with NO markdown wrapping, matching this exact schema:
 {
-  "cleaned_text": "Cleaned user request without filler words or noise",
-  "intent": "CREATE_POST" | "SCORE_CANDIDATES" | "SCHEDULE_INTERVIEW" | "FETCH_RESUMES" | "STATUS" | "CHAT",
-  "extracted_role": "Clean Role Title if applicable (e.g. Senior Data Scientist)"
+  "cleaned_text": "Cleaned user request without filler words or acoustic errors",
+  "intent": "CREATE_POST" | "SCORE_CANDIDATES" | "SCHEDULE_INTERVIEW" | "FETCH_RESUMES" | "STATUS" | "CHAT" | "RUN_FULL_PIPELINE",
+  "job_title": "Extracted Official Job Title (if applicable)",
+  "job_description": "Full generated Job Description with headline, requirements, emojis, and apply tag instructions (if intent is CREATE_POST)"
 }`;
 
   try {
-    const systemPrompt = await getSystemIntelligencePrompt("Acoustic Speech Cleaner & Intent Classifier");
+    const systemPrompt = await getSystemIntelligencePrompt("Acoustic Speech Cleaner, Intent Classifier & Job Architect Specialist");
     const resText = await callGeminiAPI(
       [{ parts: [{ text: prompt }] }],
       systemPrompt
@@ -312,9 +320,9 @@ Task:
       return JSON.parse(match[0]);
     }
   } catch (e) {
-    console.warn("LLM Transcript Cleaning notice:", e.message);
+    console.warn("LLM Transcript Cleaning & Job Extraction notice:", e.message);
   }
-  return { cleaned_text: rawTranscript, intent: null, extracted_role: null };
+  return { cleaned_text: rawTranscript, intent: null, job_title: null, job_description: null };
 }
 
 // ── Query Intent Processor & Engine ──────────────────────────────────────────
@@ -365,7 +373,7 @@ export async function processVoiceAgentQuery(userQuery) {
 
   try {
     if (intent === "CREATE_POST") {
-      let extractedTitle = query
+      let extractedTitle = llmAnalysis.job_title || query
         .replace(/generate a post for|create a post for|draft post for|we are hiring a|looking for a|hire a|create post|new job|we need a|we require a/gi, '')
         .replace(/at our company|he must be|she must be|with experience|for our team|years experience|years exp|skills/gi, '')
         .trim();
@@ -379,12 +387,14 @@ export async function processVoiceAgentQuery(userQuery) {
       const contactEmail = await getSetting("CONTACT_EMAIL", "danish.alrahimgroup@gmail.com");
       const subjectTag = `ARG-${extractedTitle.replace(/\s+/g, '-')}`;
 
-      let generatedPost = "";
-      try {
-        const systemPrompt = await getSystemIntelligencePrompt("Executive Job Description & LinkedIn Recruiting Strategist");
-        generatedPost = await callGeminiAPI(
-          [{ parts: [{ text: `Generate a comprehensive Job Description and engaging LinkedIn post for the following requirements: "${query}".` }] }],
-          `${systemPrompt}
+      let generatedPost = llmAnalysis.job_description || "";
+
+      if (!generatedPost || generatedPost.length < 20) {
+        try {
+          const systemPrompt = await getSystemIntelligencePrompt("Executive Job Description & LinkedIn Recruiting Strategist");
+          generatedPost = await callGeminiAPI(
+            [{ parts: [{ text: `Generate a comprehensive Job Description and engaging LinkedIn post for the following requirements: "${query}".` }] }],
+            `${systemPrompt}
 
 SPECIAL TASK:
 As soon as the recruiter specifies job requirements, immediately generate a complete, structured, professional Job Description & LinkedIn Post. Include:
@@ -394,10 +404,11 @@ As soon as the recruiter specifies job requirements, immediately generate a comp
 4. 📬 Application Instructions: "Send resume to ${contactEmail} with Subject: '${subjectTag}'"
 
 Make it ready for instant candidate resume matching.`
-        );
-      } catch (geminiErr) {
-        console.warn("Gemini call error fallback:", geminiErr.message);
-        generatedPost = `🚀 WE ARE HIRING: ${extractedTitle.toUpperCase()} at ${companyName}!\n\nWe are seeking a qualified ${extractedTitle} to join our growing corporate team.\n\nRequirements & Details:\n• ${query}\n• Strong corporate background and analytical expertise\n• Excellent teamwork and communication skills\n\n👉 TO APPLY: Send your resume to ${contactEmail} with subject line containing '${subjectTag}'.`;
+          );
+        } catch (geminiErr) {
+          console.warn("Gemini call error fallback:", geminiErr.message);
+          generatedPost = `🚀 WE ARE HIRING: ${extractedTitle.toUpperCase()} at ${companyName}!\n\nWe are seeking a qualified ${extractedTitle} to join our growing corporate team.\n\nRequirements & Details:\n• ${query}\n• Strong corporate background and analytical expertise\n• Excellent teamwork and communication skills\n\n👉 TO APPLY: Send your resume to ${contactEmail} with subject line containing '${subjectTag}'.`;
+        }
       }
 
       removeThinkingIndicator();
@@ -445,7 +456,7 @@ Make it ready for instant candidate resume matching.`
       if (cands.length === 0) {
         addAgentChatMessage("ai", "⚡ <i>No candidate resumes found in device memory yet. Automatically checking Gmail for newly submitted candidate emails...</i>");
         speakText("Checking Gmail for newly submitted candidate emails.");
-        
+
         try {
           const localJobs = await getAllJobs();
           for (const j of localJobs) {
@@ -602,7 +613,7 @@ Make it ready for instant candidate resume matching.`
           workflowState.candidates = await getCandidatesByJob(workflowState.activeJob.job_id);
         }
         updateAgentContextUI();
-        if (typeof window.refreshJobsUI === "function") await window.refreshJobsUI().catch(() => {});
+        if (typeof window.refreshJobsUI === "function") await window.refreshJobsUI().catch(() => { });
 
         const replyMsg = `✅ Fetched <b>${syncCount}</b> resume(s) from Gmail. Backend auto-scored <b>${scoredCount}</b>. Say <i>"Score candidates"</i> or <i>"Schedule interview"</i> to continue.`;
         addAgentChatMessage("ai", replyMsg);
@@ -623,7 +634,7 @@ Make it ready for instant candidate resume matching.`
 
       // Step 1+2: Create job post if none active
       if (!workflowState.activeJob) {
-        let extractedTitle = query
+        let extractedTitle = llmAnalysis.job_title || query
           .replace(/full pipeline|run automation|automate everything|do everything|end to end|generate a post for|create a post for|draft post for|we are hiring a|looking for a|hire a|create post|new job/gi, '')
           .replace(/at our company|he must be|she must be|with experience|for our team/gi, '')
           .trim();
@@ -631,14 +642,16 @@ Make it ready for instant candidate resume matching.`
         extractedTitle = extractedTitle.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
         const subjectTag = `ARG-${extractedTitle.replace(/\s+/g, '-')}`;
 
-        let generatedPost = "";
-        try {
-          generatedPost = await callGeminiAPI(
-            [{ parts: [{ text: `Draft an engaging, professional LinkedIn job post for: "${query}".` }] }],
-            `You are a top corporate recruiter for '${companyName}'. Write a structured, engaging LinkedIn post with bullet points and emojis. End with apply email: ${contactEmail} and subject tag '${subjectTag}'.`
-          );
-        } catch (geminiErr) {
-          generatedPost = `🚀 WE ARE HIRING: ${extractedTitle.toUpperCase()} at ${companyName}!\n\n👉 TO APPLY: Send your resume to ${contactEmail} with subject line containing '${subjectTag}'.`;
+        let generatedPost = llmAnalysis.job_description || "";
+        if (!generatedPost || generatedPost.length < 20) {
+          try {
+            generatedPost = await callGeminiAPI(
+              [{ parts: [{ text: `Draft an engaging, professional LinkedIn job post for: "${query}".` }] }],
+              `You are a top corporate recruiter for '${companyName}'. Write a structured, engaging LinkedIn post with bullet points and emojis. End with apply email: ${contactEmail} and subject tag '${subjectTag}'.`
+            );
+          } catch (geminiErr) {
+            generatedPost = `🚀 WE ARE HIRING: ${extractedTitle.toUpperCase()} at ${companyName}!\n\n👉 TO APPLY: Send your resume to ${contactEmail} with subject line containing '${subjectTag}'.`;
+          }
         }
 
         const job_id = `ARG-JD-${Date.now().toString().slice(-4)}`;
@@ -650,7 +663,7 @@ Make it ready for instant candidate resume matching.`
       }
       setPipelineStep(2);
       updateAgentContextUI();
-      if (typeof window.refreshJobsUI === "function") await window.refreshJobsUI().catch(() => {});
+      if (typeof window.refreshJobsUI === "function") await window.refreshJobsUI().catch(() => { });
 
       // Step 3: Fetch resumes
       addAgentChatMessage("system", "⚡ <b>Pipeline Step 3:</b> Fetching email resumes...");
@@ -710,7 +723,7 @@ Make it ready for instant candidate resume matching.`
       workflowState.candidates = (await getCandidatesByJob(workflowState.activeJob.job_id))
         .sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0));
       updateAgentContextUI();
-      if (typeof window.refreshJobsUI === "function") await window.refreshJobsUI().catch(() => {});
+      if (typeof window.refreshJobsUI === "function") await window.refreshJobsUI().catch(() => { });
 
       if (workflowState.candidates.length === 0) {
         addAgentChatMessage("ai", "Pipeline paused: no candidates found. Upload PDFs or configure Gmail sync, then say <i>\"Score candidates\"</i>.");
