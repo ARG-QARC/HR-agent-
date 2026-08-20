@@ -232,13 +232,35 @@ async function initPostWriter() {
         finalPostText = `🚀 WE ARE HIRING: ${jobTitle.toUpperCase()} at ${companyName}!\n\nWe are looking for a qualified ${jobTitle} to join our team.\n\nKey Details:\n• ${rawText}\n\n${applyLine}`;
       }
 
+      let posterUrl = null;
+      if (typeof window.generateHiringPosterCanvas === "function") {
+        posterUrl = await window.generateHiringPosterCanvas({
+          title: jobTitle,
+          companyName,
+          email: contactEmail
+        });
+      }
+
       previewBox.innerText = finalPostText;
+      if (posterUrl) {
+        const posterDiv = document.createElement("div");
+        posterDiv.style.cssText = "margin-top: 14px; text-align: center; background: rgba(15,23,42,0.8); padding: 12px; border-radius: 12px; border: 1px solid rgba(234,179,8,0.3);";
+        posterDiv.innerHTML = `
+          <div style="font-size: 13px; font-weight: 700; color: #eab308; margin-bottom: 8px;">🖼️ Al Rahim Group - Official Hiring Poster Banner</div>
+          <img src="${posterUrl}" alt="Official Hiring Poster" style="max-width: 100%; max-height: 360px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 8px 20px rgba(0,0,0,0.4);">
+          <div style="margin-top: 8px;">
+            <a href="${posterUrl}" download="${jobTitle.replace(/\s+/g, '_')}_Hiring_Poster.png" class="btn btn-secondary" style="font-size: 12px; padding: 6px 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">📥 Download Hiring Poster (PNG)</a>
+          </div>
+        `;
+        previewBox.appendChild(posterDiv);
+      }
 
       const job_id = `ARG-JD-${Date.now().toString().slice(-4)}`;
       currentGeneratedJob = {
         job_id,
         title: jobTitle,
         description: finalPostText,
+        poster_image: posterUrl,
         subject_tag: subjectTag,
         created_at: new Date().toISOString()
       };
@@ -1236,6 +1258,16 @@ async function renderJobsList() {
         </div>
         <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px;">Tag: <code>${job.subject_tag}</code></p>
         <div style="font-size: 13px; color: #cbd5e1; white-space: pre-wrap; background: rgba(15,23,42,0.5); padding: 12px; border-radius: 8px; max-height: 220px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.06); margin-bottom: 12px;">${job.description}</div>
+
+        ${job.poster_image ? `
+        <div style="margin-bottom: 12px; text-align: center; background: rgba(15,23,42,0.7); padding: 10px; border-radius: 10px; border: 1px solid rgba(234,179,8,0.25);">
+          <div style="font-size: 12px; font-weight: 700; color: #eab308; margin-bottom: 6px;">🖼️ Hiring Poster Banner</div>
+          <img src="${job.poster_image}" alt="Hiring Poster" style="max-width: 220px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+          <div style="margin-top: 6px;">
+            <a href="${job.poster_image}" download="${(job.title || 'Job').replace(/\s+/g, '_')}_Hiring_Poster.png" class="btn btn-secondary" style="font-size: 11px; padding: 4px 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">📥 Download Poster PNG</a>
+          </div>
+        </div>
+        ` : ''}
 
         <div style="margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;">
           <strong style="font-size: 13px; color: #60a5fa;">📥 Resumes Received under this Job (${candidates.length}):</strong>
