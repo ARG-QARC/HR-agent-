@@ -91,7 +91,7 @@ OPERATIONAL INSTRUCTIONS:
 // ── Gemini REST API Helper ───────────────────────────────────────────────────
 export async function callGeminiAPI(contents, systemInstruction = "") {
   let apiKey = await getSetting("GEMINI_API_KEY", "");
-  
+
   if (!apiKey || !apiKey.trim()) {
     try {
       const res = await fetch(`${getApiBaseUrl()}/api/settings`);
@@ -113,6 +113,7 @@ export async function callGeminiAPI(contents, systemInstruction = "") {
 
   const models = [
     "gemini-3.6-flash",
+    "gemini-3.6",
     "gemini-3.5-flash",
     "gemini-3.5-flash-lite",
     "gemini-3.1-pro-preview",
@@ -490,9 +491,9 @@ export async function processVoiceAgentQuery(userQuery) {
   const lowerQueryCheck = query.toLowerCase();
   if (workflowState.awaitingLinkedInConfirm &&
     (lowerQueryCheck.includes("posted") || lowerQueryCheck.includes("done") ||
-     lowerQueryCheck.includes("published") || lowerQueryCheck.includes("shared") ||
-     lowerQueryCheck.includes("i posted") || lowerQueryCheck.includes("it's posted") ||
-     lowerQueryCheck.includes("post is live") || lowerQueryCheck.includes("already posted"))) {
+      lowerQueryCheck.includes("published") || lowerQueryCheck.includes("shared") ||
+      lowerQueryCheck.includes("i posted") || lowerQueryCheck.includes("it's posted") ||
+      lowerQueryCheck.includes("post is live") || lowerQueryCheck.includes("already posted"))) {
     workflowState.awaitingLinkedInConfirm = false;
 
     if (workflowState.pendingPipelineResume) {
@@ -553,226 +554,226 @@ export async function processVoiceAgentQuery(userQuery) {
     });
   };
 
-// ── Visual Hiring Poster Banner Generator ────────────────────────────────────
-window.generateHiringPosterCanvas = async function (opts = {}) {
-  return new Promise((resolve) => {
-    try {
-      const canvas = document.createElement("canvas");
-      canvas.width = 1080;
-      canvas.height = 1350;
-      const ctx = canvas.getContext("2d");
+  // ── Visual Hiring Poster Banner Generator ────────────────────────────────────
+  window.generateHiringPosterCanvas = async function (opts = {}) {
+    return new Promise((resolve) => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 1080;
+        canvas.height = 1350;
+        const ctx = canvas.getContext("2d");
 
-      const companyName = opts.companyName || "Al Rahim Group";
-      const title = opts.title || "Specialist Role";
-      const email = opts.email || "danish.alrahimgroup@gmail.com";
-      const location = opts.location || "P.E.C.H.S Block 02, Karachi";
-      const workType = opts.workType || "Full-Time | On-Site";
+        const companyName = opts.companyName || "Al Rahim Group";
+        const title = opts.title || "Specialist Role";
+        const email = opts.email || "danish.alrahimgroup@gmail.com";
+        const location = opts.location || "P.E.C.H.S Block 02, Karachi";
+        const workType = opts.workType || "Full-Time | On-Site";
 
-      let skills = opts.skills || "";
-      if (!skills) {
-        if (/android|mobile/i.test(title)) skills = "Android SDK, Kotlin, Java, REST APIs, Git";
-        else if (/python/i.test(title)) skills = "Python, Django, FastAPI, SQL, Docker, APIs";
-        else if (/data|ai|machine/i.test(title)) skills = "Python, ML, RAG, Vector DBs, LangChain, APIs";
-        else skills = "Domain Expertise, Problem Solving, Analytical Skills";
-      }
+        let skills = opts.skills || "";
+        if (!skills) {
+          if (/android|mobile/i.test(title)) skills = "Android SDK, Kotlin, Java, REST APIs, Git";
+          else if (/python/i.test(title)) skills = "Python, Django, FastAPI, SQL, Docker, APIs";
+          else if (/data|ai|machine/i.test(title)) skills = "Python, ML, RAG, Vector DBs, LangChain, APIs";
+          else skills = "Domain Expertise, Problem Solving, Analytical Skills";
+        }
 
-      // Background Gradient
-      const bgGrad = ctx.createLinearGradient(0, 0, 1080, 1350);
-      bgGrad.addColorStop(0, "#ffffff");
-      bgGrad.addColorStop(0.5, "#f8fafc");
-      bgGrad.addColorStop(1, "#f1f5f9");
-      ctx.fillStyle = bgGrad;
-      ctx.fillRect(0, 0, 1080, 1350);
+        // Background Gradient
+        const bgGrad = ctx.createLinearGradient(0, 0, 1080, 1350);
+        bgGrad.addColorStop(0, "#ffffff");
+        bgGrad.addColorStop(0.5, "#f8fafc");
+        bgGrad.addColorStop(1, "#f1f5f9");
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, 1080, 1350);
 
-      // Gold Accent Waves (Top Left & Bottom Left)
-      ctx.fillStyle = "#eab308";
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(260, 0);
-      ctx.bezierCurveTo(240, 140, 140, 240, 0, 260);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.fillStyle = "#f59e0b";
-      ctx.beginPath();
-      ctx.moveTo(0, 1050);
-      ctx.bezierCurveTo(160, 980, 360, 1150, 540, 1350);
-      ctx.lineTo(0, 1350);
-      ctx.closePath();
-      ctx.fill();
-
-      // Tech Grid Lines
-      ctx.strokeStyle = "rgba(30, 27, 75, 0.07)";
-      ctx.lineWidth = 2;
-      for (let i = 0; i < 14; i++) {
+        // Gold Accent Waves (Top Left & Bottom Left)
+        ctx.fillStyle = "#eab308";
         ctx.beginPath();
-        ctx.moveTo(550 + i * 40, 0);
-        ctx.lineTo(1080, 500 + i * 40);
-        ctx.stroke();
-      }
+        ctx.moveTo(0, 0);
+        ctx.lineTo(260, 0);
+        ctx.bezierCurveTo(240, 140, 140, 240, 0, 260);
+        ctx.closePath();
+        ctx.fill();
 
-      // Brand Logo Header (Top Left)
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(100, 85, 34, 0, Math.PI * 2);
-      ctx.fillStyle = "#1e1b4b";
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.arc(100, 85, 22, 0, Math.PI * 2);
-      ctx.fillStyle = "#ffffff";
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.arc(100, 85, 12, 0, Math.PI * 2);
-      ctx.fillStyle = "#eab308";
-      ctx.fill();
-      ctx.restore();
-
-      ctx.fillStyle = "#1e1b4b";
-      ctx.font = "900 36px 'Inter', sans-serif";
-      ctx.fillText("ARG", 148, 80);
-
-      ctx.fillStyle = "#475569";
-      ctx.font = "600 22px 'Inter', sans-serif";
-      ctx.fillText(companyName, 148, 106);
-
-      // Title: WE'RE HIRING
-      ctx.textAlign = "center";
-      ctx.fillStyle = "#1e1b4b";
-      ctx.font = "900 110px 'Inter', sans-serif";
-      ctx.fillText("WE'RE", 540, 230);
-
-      // Outlined HIRING Text
-      ctx.font = "900 150px 'Inter', sans-serif";
-      ctx.strokeStyle = "#1e1b4b";
-      ctx.lineWidth = 6;
-      ctx.strokeText("HIRING", 540, 365);
-      ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-      ctx.fillText("HIRING", 540, 365);
-
-      // Job Title Badge Pill
-      ctx.font = "700 36px 'Inter', sans-serif";
-      const measuredWidth = ctx.measureText(title).width;
-      const pillWidth = Math.min(Math.max(measuredWidth + 80, 500), 960);
-      const pillHeight = 90;
-      const pillX = (1080 - pillWidth) / 2;
-      const pillY = 415;
-
-      ctx.beginPath();
-      if (ctx.roundRect) ctx.roundRect(pillX, pillY, pillWidth, pillHeight, 45);
-      else ctx.rect(pillX, pillY, pillWidth, pillHeight);
-      ctx.fillStyle = "#1e1b4b";
-      ctx.fill();
-
-      ctx.fillStyle = "#ffffff";
-      ctx.fillText(title, 540, pillY + 58);
-
-      // Details Card Box
-      const cardX = 140;
-      const cardY = 555;
-      const cardW = 800;
-      const cardH = 530;
-
-      ctx.beginPath();
-      if (ctx.roundRect) ctx.roundRect(cardX, cardY, cardW, cardH, 32);
-      else ctx.rect(cardX, cardY, cardW, cardH);
-      ctx.fillStyle = "#1e1b4b";
-      ctx.fill();
-
-      // Megaphone Graphic
-      ctx.save();
-      ctx.translate(840, 570);
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(85, -45);
-      ctx.lineTo(85, 85);
-      ctx.lineTo(0, 40);
-      ctx.closePath();
-      ctx.fillStyle = "#2563eb";
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.ellipse(85, 20, 18, 65, 0, 0, Math.PI * 2);
-      ctx.fillStyle = "#60a5fa";
-      ctx.fill();
-
-      ctx.beginPath();
-      if (ctx.roundRect) ctx.roundRect(12, 32, 22, 55, 8);
-      else ctx.rect(12, 32, 22, 55);
-      ctx.fillStyle = "#1d4ed8";
-      ctx.fill();
-      ctx.restore();
-
-      // Items inside Card
-      ctx.textAlign = "left";
-      const items = [
-        workType,
-        `Location: ${location}`,
-        `Skills: ${skills}`,
-        "Market Competitive Salary & Benefits"
-      ];
-
-      let itemY = cardY + 75;
-      items.forEach((txt) => {
+        ctx.fillStyle = "#f59e0b";
         ctx.beginPath();
-        ctx.arc(cardX + 65, itemY, 20, 0, Math.PI * 2);
+        ctx.moveTo(0, 1050);
+        ctx.bezierCurveTo(160, 980, 360, 1150, 540, 1350);
+        ctx.lineTo(0, 1350);
+        ctx.closePath();
+        ctx.fill();
+
+        // Tech Grid Lines
+        ctx.strokeStyle = "rgba(30, 27, 75, 0.07)";
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 14; i++) {
+          ctx.beginPath();
+          ctx.moveTo(550 + i * 40, 0);
+          ctx.lineTo(1080, 500 + i * 40);
+          ctx.stroke();
+        }
+
+        // Brand Logo Header (Top Left)
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(100, 85, 34, 0, Math.PI * 2);
+        ctx.fillStyle = "#1e1b4b";
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(100, 85, 22, 0, Math.PI * 2);
         ctx.fillStyle = "#ffffff";
         ctx.fill();
 
         ctx.beginPath();
-        ctx.moveTo(cardX + 56, itemY - 1);
-        ctx.lineTo(cardX + 62, itemY + 6);
-        ctx.lineTo(cardX + 74, itemY - 6);
+        ctx.arc(100, 85, 12, 0, Math.PI * 2);
+        ctx.fillStyle = "#eab308";
+        ctx.fill();
+        ctx.restore();
+
+        ctx.fillStyle = "#1e1b4b";
+        ctx.font = "900 36px 'Inter', sans-serif";
+        ctx.fillText("ARG", 148, 80);
+
+        ctx.fillStyle = "#475569";
+        ctx.font = "600 22px 'Inter', sans-serif";
+        ctx.fillText(companyName, 148, 106);
+
+        // Title: WE'RE HIRING
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#1e1b4b";
+        ctx.font = "900 110px 'Inter', sans-serif";
+        ctx.fillText("WE'RE", 540, 230);
+
+        // Outlined HIRING Text
+        ctx.font = "900 150px 'Inter', sans-serif";
         ctx.strokeStyle = "#1e1b4b";
-        ctx.lineWidth = 4.5;
-        ctx.stroke();
+        ctx.lineWidth = 6;
+        ctx.strokeText("HIRING", 540, 365);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+        ctx.fillText("HIRING", 540, 365);
+
+        // Job Title Badge Pill
+        ctx.font = "700 36px 'Inter', sans-serif";
+        const measuredWidth = ctx.measureText(title).width;
+        const pillWidth = Math.min(Math.max(measuredWidth + 80, 500), 960);
+        const pillHeight = 90;
+        const pillX = (1080 - pillWidth) / 2;
+        const pillY = 415;
+
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(pillX, pillY, pillWidth, pillHeight, 45);
+        else ctx.rect(pillX, pillY, pillWidth, pillHeight);
+        ctx.fillStyle = "#1e1b4b";
+        ctx.fill();
 
         ctx.fillStyle = "#ffffff";
-        ctx.font = "600 29px 'Inter', sans-serif";
-        let displayTxt = txt;
-        if (displayTxt.length > 46) {
-          displayTxt = displayTxt.substring(0, 43) + "...";
-        }
-        ctx.fillText(displayTxt, cardX + 110, itemY + 10);
-        itemY += 108;
-      });
+        ctx.fillText(title, 540, pillY + 58);
 
-      // Footer Banner
-      const footW = 920;
-      const footH = 110;
-      const footX = (1080 - footW) / 2;
-      const footY = 1165;
+        // Details Card Box
+        const cardX = 140;
+        const cardY = 555;
+        const cardW = 800;
+        const cardH = 530;
 
-      ctx.beginPath();
-      if (ctx.roundRect) ctx.roundRect(footX, footY, footW, footH, 55);
-      else ctx.rect(footX, footY, footW, footH);
-      ctx.fillStyle = "#eab308";
-      ctx.fill();
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(cardX, cardY, cardW, cardH, 32);
+        else ctx.rect(cardX, cardY, cardW, cardH);
+        ctx.fillStyle = "#1e1b4b";
+        ctx.fill();
 
-      // Email Badge (Right)
-      ctx.beginPath();
-      ctx.arc(footX + footW - 55, footY + 55, 34, 0, Math.PI * 2);
-      ctx.fillStyle = "#1e1b4b";
-      ctx.fill();
+        // Megaphone Graphic
+        ctx.save();
+        ctx.translate(840, 570);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(85, -45);
+        ctx.lineTo(85, 85);
+        ctx.lineTo(0, 40);
+        ctx.closePath();
+        ctx.fillStyle = "#2563eb";
+        ctx.fill();
 
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "32px 'Inter', sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("✉", footX + footW - 55, footY + 65);
+        ctx.beginPath();
+        ctx.ellipse(85, 20, 18, 65, 0, 0, Math.PI * 2);
+        ctx.fillStyle = "#60a5fa";
+        ctx.fill();
 
-      // Email Text
-      ctx.fillStyle = "#1e1b4b";
-      ctx.font = "800 35px 'Inter', sans-serif";
-      ctx.fillText(`Send your CVs to ${email}`, 540 - 20, footY + 66);
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(12, 32, 22, 55, 8);
+        else ctx.rect(12, 32, 22, 55);
+        ctx.fillStyle = "#1d4ed8";
+        ctx.fill();
+        ctx.restore();
 
-      resolve(canvas.toDataURL("image/png"));
-    } catch (err) {
-      console.warn("Canvas poster generation notice:", err);
-      resolve(null);
-    }
-  });
-};
+        // Items inside Card
+        ctx.textAlign = "left";
+        const items = [
+          workType,
+          `Location: ${location}`,
+          `Skills: ${skills}`,
+          "Market Competitive Salary & Benefits"
+        ];
+
+        let itemY = cardY + 75;
+        items.forEach((txt) => {
+          ctx.beginPath();
+          ctx.arc(cardX + 65, itemY, 20, 0, Math.PI * 2);
+          ctx.fillStyle = "#ffffff";
+          ctx.fill();
+
+          ctx.beginPath();
+          ctx.moveTo(cardX + 56, itemY - 1);
+          ctx.lineTo(cardX + 62, itemY + 6);
+          ctx.lineTo(cardX + 74, itemY - 6);
+          ctx.strokeStyle = "#1e1b4b";
+          ctx.lineWidth = 4.5;
+          ctx.stroke();
+
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "600 29px 'Inter', sans-serif";
+          let displayTxt = txt;
+          if (displayTxt.length > 46) {
+            displayTxt = displayTxt.substring(0, 43) + "...";
+          }
+          ctx.fillText(displayTxt, cardX + 110, itemY + 10);
+          itemY += 108;
+        });
+
+        // Footer Banner
+        const footW = 920;
+        const footH = 110;
+        const footX = (1080 - footW) / 2;
+        const footY = 1165;
+
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(footX, footY, footW, footH, 55);
+        else ctx.rect(footX, footY, footW, footH);
+        ctx.fillStyle = "#eab308";
+        ctx.fill();
+
+        // Email Badge (Right)
+        ctx.beginPath();
+        ctx.arc(footX + footW - 55, footY + 55, 34, 0, Math.PI * 2);
+        ctx.fillStyle = "#1e1b4b";
+        ctx.fill();
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "32px 'Inter', sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("✉", footX + footW - 55, footY + 65);
+
+        // Email Text
+        ctx.fillStyle = "#1e1b4b";
+        ctx.font = "800 35px 'Inter', sans-serif";
+        ctx.fillText(`Send your CVs to ${email}`, 540 - 20, footY + 66);
+
+        resolve(canvas.toDataURL("image/png"));
+      } catch (err) {
+        console.warn("Canvas poster generation notice:", err);
+        resolve(null);
+      }
+    });
+  };
 
   try {
     if (intent === "EDIT_POST") {
