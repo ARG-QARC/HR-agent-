@@ -310,6 +310,120 @@ Return ONLY a valid JSON object matching:
   }
 }
 
+// ── Smart Local Speech Cleaner & Recruiter NLP Intelligence ─────────────────
+export function smartCleanVoiceInput(text) {
+  if (!text) return "";
+  let clean = text;
+
+  // Fix common acoustic STT transcription errors
+  clean = clean
+    .replace(/\b5 and developer\b/gi, '5 Android Developers')
+    .replace(/\band developer\b/gi, 'Android Developer')
+    .replace(/\bhigher\b/gi, 'hire')
+    .replace(/\bannedy\b/gi, 'NED')
+    .replace(/\benedy\b/gi, 'NED')
+    .replace(/\bned uni\b/gi, 'NED University')
+    .replace(/\brecon settle\b/gi, 'reconstruct')
+    .replace(/\bre settle\b/gi, 'reconstruct');
+
+  return clean;
+}
+
+export function isEditOrReconstructIntent(text) {
+  if (!text) return false;
+  const t = text.toLowerCase();
+  const editTriggers = [
+    "reconstruct", "rewrite", "recon settle", "re-settle", "clean up", "cleanup",
+    "remove my voice", "my own voice", "not be in the job", "don't include", "dont include",
+    "you are mentioning", "fix the job", "change the job", "modify the job", "update the job",
+    "make it professional", "re-draft", "redraft", "fix job description", "reconstruct the job"
+  ];
+  return editTriggers.some(trigger => t.includes(trigger));
+}
+
+export function extractCleanJobTitle(text) {
+  if (!text) return "Software Developer";
+
+  const cleaned = smartCleanVoiceInput(text);
+
+  // 1. Match against known professional roles
+  const rolePatterns = [
+    { regex: /\b(android|ios|mobile)\s+developer\b/i, title: "Android Developer" },
+    { regex: /\bpython\s+developer\b/i, title: "Python Developer" },
+    { regex: /\bdata\s+scientist\b/i, title: "Data Scientist" },
+    { regex: /\bmachine\s+learning\s+engineer\b/i, title: "Machine Learning Engineer" },
+    { regex: /\bfull\s*stack\s+developer\b/i, title: "Full Stack Developer" },
+    { regex: /\bfront\s*end\s+developer\b/i, title: "Frontend Developer" },
+    { regex: /\bback\s*end\s+developer\b/i, title: "Backend Developer" },
+    { regex: /\bsoftware\s+(engineer|developer)\b/i, title: "Software Engineer" },
+    { regex: /\bqa\s+engineer\b/i, title: "QA Engineer" },
+    { regex: /\bdevops\s+engineer\b/i, title: "DevOps Engineer" },
+    { regex: /\bui\s*\/\s*ux\s+designer\b/i, title: "UI/UX Designer" },
+    { regex: /\bproject\s+manager\b/i, title: "Project Manager" },
+    { regex: /\bproduct\s+manager\b/i, title: "Product Manager" },
+    { regex: /\bhr\s+(specialist|manager|agent)\b/i, title: "HR Specialist" },
+    { regex: /\bdeveloper\b/i, title: "Software Developer" },
+    { regex: /\bengineer\b/i, title: "Software Engineer" }
+  ];
+
+  for (const item of rolePatterns) {
+    if (item.regex.test(cleaned)) {
+      return item.title;
+    }
+  }
+
+  // 2. Fallback rule: Strip conversational verb phrases
+  let t = cleaned
+    .replace(/i need want to hire|i need to hire|i want to hire|we need to hire|we are hiring|looking for a|looking for|draft post for|create post for|generate post for|please create|please recon settle|please reconstruct|you are mentioning that|my own voice|so this much not be in the job description|please|reconstructed/gi, '')
+    .replace(/who were has graduated from|graduated from|at our company|for our team|with experience|years experience/gi, '')
+    .replace(/\b(\d+)\b/g, '')
+    .replace(/[^\w\s]/g, '')
+    .trim();
+
+  if (t.length >= 3 && t.length <= 40 && !isEditOrReconstructIntent(t)) {
+    return t.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+  }
+
+  return "Software Developer";
+}
+
+export function generateLocalSmartJobPost(rawText, cleanTitle, companyName, contactEmail, subjectTag) {
+  const cleanedText = smartCleanVoiceInput(rawText);
+
+  // Extract headcount if specified
+  const numMatch = cleanedText.match(/\b(\d+)\b/);
+  const headcount = numMatch ? numMatch[1] : null;
+  const headcountText = headcount ? ` (${headcount} Open Positions)` : "";
+
+  // Extract university degree reference
+  let uniNote = "Bachelor's / Master's degree in Computer Science or related field";
+  if (/ned|annedy|enedy|university/i.test(cleanedText)) {
+    uniNote = "Bachelor's degree in Computer Science / Software Engineering (Graduated from NED University or equivalent accredited university)";
+  }
+
+  // Infer technical skill domain
+  let skillDomain = "Software development, system architecture, and clean code practices";
+  if (/android|mobile/i.test(cleanTitle) || /android|mobile/i.test(cleanedText)) {
+    skillDomain = "Android SDK, Kotlin/Java, RESTful APIs, MVVM Architecture, and Mobile UI Development";
+  } else if (/python/i.test(cleanTitle)) {
+    skillDomain = "Python, Django/FastAPI, Data Structures, Async IO, and SQL/NoSQL Databases";
+  } else if (/data scientist|machine learning/i.test(cleanTitle)) {
+    skillDomain = "Python, Machine Learning (TensorFlow/PyTorch), Data Analysis (Pandas/NumPy), and Model Deployment";
+  }
+
+  return `🚀 WE ARE HIRING: ${cleanTitle.toUpperCase()}${headcountText} at ${companyName}!
+
+We are seeking qualified ${cleanTitle}s to join our growing technical team at ${companyName}.
+
+🎯 Key Requirements & Responsibilities:
+• Academic Qualification: ${uniNote}
+• Core Technical Expertise: ${skillDomain}
+• Professional Competencies: Strong analytical expertise, problem-solving capabilities, and excellent teamwork
+${headcount ? `• Active Openings: ${headcount} position(s) available` : ''}
+
+👉 TO APPLY: Send your resume to ${contactEmail} with subject line containing '${subjectTag}'.`;
+}
+
 // ── LLM Noise Cleaner & Intent Classifier ───────────────────────────────────
 export async function cleanTranscriptAndDetectIntent(rawTranscript) {
   const companyName = await getSetting("COMPANY_NAME", "Al Rahim Group");
@@ -318,20 +432,22 @@ export async function cleanTranscriptAndDetectIntent(rawTranscript) {
   const prompt = `This is a raw speech-to-text transcript captured from the user's microphone in a live recruiting environment. It may contain background noise artifacts, acoustic transcription errors, filler words (um, ah, like, you know), or fragmented syntax.
 
 Raw Voice Transcript: "${rawTranscript}"
+${workflowState.activeJob ? `Current Active Job Position: "${workflowState.activeJob.title}" (Job ID: ${workflowState.activeJob.job_id})` : ''}
 
 Task:
-1. Filter out background noise, filler words, and acoustic transcription errors to get the true user intent.
-2. Determine the user's intent: "CREATE_POST" | "SCORE_CANDIDATES" | "SCHEDULE_INTERVIEW" | "FETCH_RESUMES" | "STATUS" | "CHAT" | "RUN_FULL_PIPELINE".
-3. IF the user is asking to create, post, or draft a job position (or providing job role/requirements):
-   - Extract the exact, clean official Job Title (e.g. "Senior Data Scientist").
-   - Generate a complete, professional, structured Job Description and engaging LinkedIn post incorporating all user-specified requirements, skills, experience level, and responsibilities.
+1. Filter out background noise, filler words, acoustic typos (e.g. "5 and developer" -> "5 Android Developers", "annedy" -> "NED University"), and raw conversational fluff ("I need want to hire", "my own voice", "please recon settle").
+2. Determine the user's intent: "CREATE_POST" | "EDIT_POST" | "SCORE_CANDIDATES" | "SCHEDULE_INTERVIEW" | "FETCH_RESUMES" | "STATUS" | "CHAT" | "RUN_FULL_PIPELINE".
+   - Set intent to "EDIT_POST" if the user is asking to edit, reconstruct, rewrite, clean up, or change an existing job post, or complaining about raw voice text in the post (e.g. "reconstruct", "rewrite", "don't include my voice", "please recon settle").
+3. IF intent is "CREATE_POST" or "EDIT_POST":
+   - Extract a clean, professional, official Job Title (e.g. "Android Developer" or "Senior Data Scientist"). NEVER output conversational sentences like "I Need Want To Hire..." or "Please Recon Settle..." as job titles!
+   - Generate a complete, professional, structured Job Description and engaging LinkedIn post incorporating user requirements cleanly.
    - Include apply instructions: "Send resume to ${contactEmail} with Subject containing 'ARG-[Job-Title]'".
-4. Return ONLY a valid JSON object with NO markdown wrapping, matching this exact schema:
+4. Return ONLY a valid JSON object matching this schema:
 {
   "cleaned_text": "Cleaned user request without filler words or acoustic errors",
-  "intent": "CREATE_POST" | "SCORE_CANDIDATES" | "SCHEDULE_INTERVIEW" | "FETCH_RESUMES" | "STATUS" | "CHAT" | "RUN_FULL_PIPELINE",
-  "job_title": "Extracted Official Job Title (if applicable)",
-  "job_description": "Full generated Job Description with headline, requirements, emojis, and apply tag instructions (if intent is CREATE_POST)"
+  "intent": "CREATE_POST" | "EDIT_POST" | "SCORE_CANDIDATES" | "SCHEDULE_INTERVIEW" | "FETCH_RESUMES" | "STATUS" | "CHAT" | "RUN_FULL_PIPELINE",
+  "job_title": "Clean Official Job Title",
+  "job_description": "Full generated professional Job Description & LinkedIn Post"
 }`;
 
   try {
@@ -346,7 +462,16 @@ Task:
     }
   } catch (e) {
     console.warn("LLM Transcript Cleaning & Job Extraction notice:", e.message);
-    return { cleaned_text: rawTranscript, intent: null, job_title: null, job_description: null, error: e.message };
+    const cleaned = smartCleanVoiceInput(rawTranscript);
+    const isEdit = isEditOrReconstructIntent(rawTranscript);
+    const cleanTitle = extractCleanJobTitle(rawTranscript);
+    return {
+      cleaned_text: cleaned,
+      intent: isEdit ? "EDIT_POST" : null,
+      job_title: cleanTitle,
+      job_description: null,
+      error: e.message
+    };
   }
   return { cleaned_text: rawTranscript, intent: null, job_title: null, job_description: null };
 }
@@ -361,9 +486,6 @@ export async function processVoiceAgentQuery(userQuery) {
   saveChatMessage("user", query).catch(e => console.warn(e));
 
   // ── LinkedIn Post Confirmation Detection ──────────────────────────────────
-  // If the agent is waiting for the user to confirm they've posted on LinkedIn,
-  // intercept confirmation phrases and resume the workflow before running
-  // through the full LLM intent classification pipeline.
   const lowerQueryCheck = query.toLowerCase();
   if (workflowState.awaitingLinkedInConfirm &&
     (lowerQueryCheck.includes("posted") || lowerQueryCheck.includes("done") ||
@@ -372,18 +494,15 @@ export async function processVoiceAgentQuery(userQuery) {
      lowerQueryCheck.includes("post is live") || lowerQueryCheck.includes("already posted"))) {
     workflowState.awaitingLinkedInConfirm = false;
 
-    // If the full pipeline was paused at Step 1-2, resume it from Step 3
     if (workflowState.pendingPipelineResume) {
       workflowState.pendingPipelineResume = false;
       addAgentChatMessage("ai",
         `🎉 Great! Your job post is now live on LinkedIn. Resuming the full recruitment pipeline from <b>Step 3: Fetch Resumes</b>...`);
       speakText("Excellent! Your LinkedIn post is live. Resuming the recruitment pipeline.");
-      // Trigger pipeline resume from Step 3 onwards
       await _resumePipelineFromStep3();
       return;
     }
 
-    // Standard confirmation — just acknowledge and let the user proceed manually
     addAgentChatMessage("ai",
       `🎉 Great! Your job post is now live on LinkedIn. Continuing recruitment workflow — say <i>"Score candidates"</i> or <i>"Fetch resumes"</i> to proceed!`);
     speakText("Excellent! Your LinkedIn post is live. Ready to continue the recruitment pipeline.");
@@ -395,13 +514,15 @@ export async function processVoiceAgentQuery(userQuery) {
 
   // 3. Run LLM Noise Cleaner & Intent Classifier
   const llmAnalysis = await cleanTranscriptAndDetectIntent(query);
-  const cleanedQuery = llmAnalysis.cleaned_text || query;
+  const cleanedQuery = llmAnalysis.cleaned_text || smartCleanVoiceInput(query);
 
   const lowerQuery = cleanedQuery.toLowerCase();
   let intent = llmAnalysis.intent || "CREATE_POST";
 
   if (!llmAnalysis.intent) {
-    if (lowerQuery.includes("full pipeline") || lowerQuery.includes("run automation") || lowerQuery.includes("automate everything") || lowerQuery.includes("do everything") || lowerQuery.includes("end to end")) {
+    if (isEditOrReconstructIntent(cleanedQuery) && workflowState.activeJob) {
+      intent = "EDIT_POST";
+    } else if (lowerQuery.includes("full pipeline") || lowerQuery.includes("run automation") || lowerQuery.includes("automate everything") || lowerQuery.includes("do everything") || lowerQuery.includes("end to end")) {
       intent = "RUN_FULL_PIPELINE";
     } else if (lowerQuery.includes("fetch") || lowerQuery.includes("sync") || lowerQuery.includes("download") || lowerQuery.includes("gmail")) {
       intent = "FETCH_RESUMES";
@@ -416,6 +537,10 @@ export async function processVoiceAgentQuery(userQuery) {
     }
   }
 
+  if (intent === "CREATE_POST" && isEditOrReconstructIntent(query) && workflowState.activeJob) {
+    intent = "EDIT_POST";
+  }
+
   const removeThinkingIndicator = () => {
     const chatStream = document.getElementById("agent-chat-stream");
     if (!chatStream) return;
@@ -428,16 +553,80 @@ export async function processVoiceAgentQuery(userQuery) {
   };
 
   try {
-    if (intent === "CREATE_POST") {
-      let extractedTitle = llmAnalysis.job_title || query
-        .replace(/generate a post for|create a post for|draft post for|we are hiring a|looking for a|hire a|create post|new job|we need a|we require a/gi, '')
-        .replace(/at our company|he must be|she must be|with experience|for our team|years experience|years exp|skills/gi, '')
-        .trim();
-
-      if (!extractedTitle || extractedTitle.length < 3) {
-        extractedTitle = "Specialist Role";
+    if (intent === "EDIT_POST") {
+      if (!workflowState.activeJob) {
+        const jobs = await getAllJobs();
+        if (jobs.length > 0) workflowState.activeJob = jobs[0];
       }
-      extractedTitle = extractedTitle.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+      const activeJob = workflowState.activeJob;
+      const companyName = await getSetting("COMPANY_NAME", "Al Rahim Group");
+      const contactEmail = await getSetting("CONTACT_EMAIL", "danish.alrahimgroup@gmail.com");
+
+      let cleanTitle = llmAnalysis.job_title || extractCleanJobTitle(query);
+      if (!cleanTitle || isEditOrReconstructIntent(cleanTitle) || cleanTitle.length > 35) {
+        cleanTitle = activeJob ? activeJob.title : "Software Developer";
+      }
+
+      const subjectTag = activeJob ? activeJob.subject_tag : `ARG-${cleanTitle.replace(/\s+/g, '-')}`;
+      let generatedPost = llmAnalysis.job_description || "";
+
+      if (!generatedPost || generatedPost.length < 20) {
+        try {
+          const systemPrompt = await getSystemIntelligencePrompt("Executive Job Description & LinkedIn Recruiting Strategist");
+          generatedPost = await callGeminiAPI(
+            [{ parts: [{ text: `Reconstruct and refine the job description for "${cleanTitle}". User Feedback/Instruction: "${query}". Context: Make it clean, professional, remove any conversational voice fluff.` }] }],
+            systemPrompt
+          );
+        } catch (geminiErr) {
+          console.warn("Gemini call error fallback on edit:", geminiErr.message);
+          addAgentChatMessage("system", `⚠️ <b>AI Intelligence Warning:</b> Could not reach Gemini API (${geminiErr.message}). Reconstructing job description using local intelligence engine.`);
+          generatedPost = generateLocalSmartJobPost(query, cleanTitle, companyName, contactEmail, subjectTag);
+        }
+      }
+
+      removeThinkingIndicator();
+
+      if (activeJob) {
+        activeJob.title = cleanTitle;
+        activeJob.description = generatedPost;
+        await addJob(activeJob).catch(e => console.warn(e));
+        workflowState.activeJob = activeJob;
+      } else {
+        const job_id = `ARG-JD-${Date.now().toString().slice(-4)}`;
+        const newJob = {
+          job_id,
+          title: cleanTitle,
+          description: generatedPost,
+          subject_tag: subjectTag,
+          created_at: new Date().toISOString()
+        };
+        await addJob(newJob).catch(e => console.warn(e));
+        workflowState.activeJob = newJob;
+      }
+
+      updateAgentContextUI();
+      if (typeof window.refreshJobsUI === "function") {
+        await window.refreshJobsUI().catch(e => console.warn(e));
+      }
+
+      const btnSuffix = Date.now();
+      const replyMsg = `✅ Reconstructed and updated active job post for <b>${cleanTitle}</b> (ID: ${workflowState.activeJob.job_id})!\n\n<pre style="white-space: pre-wrap; background: rgba(15,23,42,0.7); padding: 12px; border-radius: 8px; margin-top: 8px; font-family: inherit; font-size: 13px; border: 1px solid rgba(56,189,248,0.2);">${generatedPost}</pre>\n\n<div class="linkedin-action-btns" id="linkedin-btns-${btnSuffix}"><button class="btn-linkedin-post" onclick="window.postToLinkedIn('${btnSuffix}')" id="btn-li-post-${btnSuffix}">🔗 Post to LinkedIn</button><button class="btn-copy-continue" onclick="window.copyAndContinue('${btnSuffix}')" id="btn-li-copy-${btnSuffix}">📋 Copy & Continue</button></div>`;
+
+      window[`_liPostData_${btnSuffix}`] = {
+        postText: generatedPost,
+        jobTitle: cleanTitle,
+        isPipeline: false
+      };
+
+      addAgentChatMessage("ai", replyMsg);
+      speakText(`Reconstructed and updated job description for ${cleanTitle}.`);
+
+    } else if (intent === "CREATE_POST") {
+      let extractedTitle = llmAnalysis.job_title || extractCleanJobTitle(query);
+      if (!extractedTitle || isEditOrReconstructIntent(extractedTitle) || extractedTitle.length > 35) {
+        extractedTitle = extractCleanJobTitle(query);
+      }
 
       const companyName = await getSetting("COMPANY_NAME", "Al Rahim Group");
       const contactEmail = await getSetting("CONTACT_EMAIL", "danish.alrahimgroup@gmail.com");
@@ -464,7 +653,7 @@ Make it ready for instant candidate resume matching.`
         } catch (geminiErr) {
           console.warn("Gemini call error fallback:", geminiErr.message);
           addAgentChatMessage("system", `⚠️ <b>AI Intelligence Warning:</b> Could not reach Gemini API (${geminiErr.message}). Displaying local template fallback. Please verify your GEMINI_API_KEY in Cloud & Settings.`);
-          generatedPost = `🚀 WE ARE HIRING: ${extractedTitle.toUpperCase()} at ${companyName}!\n\nWe are seeking a qualified ${extractedTitle} to join our growing corporate team.\n\nRequirements & Details:\n• ${query}\n• Strong corporate background and analytical expertise\n• Excellent teamwork and communication skills\n\n👉 TO APPLY: Send your resume to ${contactEmail} with subject line containing '${subjectTag}'.`;
+          generatedPost = generateLocalSmartJobPost(query, extractedTitle, companyName, contactEmail, subjectTag);
         }
       }
 
@@ -489,15 +678,9 @@ Make it ready for instant candidate resume matching.`
         await window.refreshJobsUI().catch(e => console.warn(e));
       }
 
-      // Build the unique button ID suffix to prevent clashes with previous messages
       const btnSuffix = Date.now();
-
-      // Escape the generated post for safe embedding in a data attribute
-      const escapedPost = generatedPost.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-
       const replyMsg = `✅ Generated and saved job position post for <b>${extractedTitle}</b> (ID: ${job_id}) to device memory!\n\n<pre style="white-space: pre-wrap; background: rgba(15,23,42,0.7); padding: 12px; border-radius: 8px; margin-top: 8px; font-family: inherit; font-size: 13px; border: 1px solid rgba(56,189,248,0.2);">${generatedPost}</pre>\n\n<div class="linkedin-action-btns" id="linkedin-btns-${btnSuffix}"><button class="btn-linkedin-post" onclick="window.postToLinkedIn('${btnSuffix}')" id="btn-li-post-${btnSuffix}">🔗 Post to LinkedIn</button><button class="btn-copy-continue" onclick="window.copyAndContinue('${btnSuffix}')" id="btn-li-copy-${btnSuffix}">📋 Copy & Continue</button></div>`;
 
-      // Store the post data on the window so the button handlers can access it
       window[`_liPostData_${btnSuffix}`] = {
         postText: generatedPost,
         jobTitle: extractedTitle,
