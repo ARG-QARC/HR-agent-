@@ -61,6 +61,7 @@ def create_app() -> FastAPI:
         """Request body for the LinkedIn auto-post endpoint."""
         post_text: str
         job_title: Optional[str] = "Job Position"
+        poster_image: Optional[str] = None
 
     @app.get("/api/health")
     def health_check():
@@ -93,7 +94,7 @@ def create_app() -> FastAPI:
 
         try:
             result = await asyncio.to_thread(
-                linkedin_auto_post, payload.post_text, payload.job_title
+                linkedin_auto_post, payload.post_text, payload.job_title, payload.poster_image
             )
             return JSONResponse(content=result)
         except Exception as e:

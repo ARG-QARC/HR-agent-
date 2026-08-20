@@ -183,35 +183,39 @@ def _click_start_post_button(app_win):
     return False
 
 
-def linkedin_auto_post(post_text: str, job_title: str = "Job Position") -> dict:
+def linkedin_auto_post(post_text: str, job_title: str = "Job Position", poster_image: str = None) -> dict:
     """
-    Main automation function: opens LinkedIn, pastes post content into the editor.
+    Main automation function: opens LinkedIn, pastes post text & hiring poster image.
 
-    This function performs the following steps:
-      1. Copy the post text to the system clipboard
-      2. Launch the LinkedIn desktop app (UWP) or browser fallback
-      3. Wait for the LinkedIn window to appear (up to 12 seconds)
-      4. Focus the window and bring it to the foreground
-      5. Find and click the "Start a post" button
-      6. Wait for the post editor to render
-      7. Paste the clipboard content into the editor (Ctrl+V)
+    Steps:
+      1. Copy post text and hiring poster image to system clipboard
+      2. Launch LinkedIn desktop app (UWP / browser protocol)
+      3. Focus window and click "Start a post"
+      4. Paste post text via Ctrl+V
+      5. Copy hiring poster image to clipboard and paste via Ctrl+V into editor
 
-    The function intentionally does NOT click the final "Post" button.
     The user must review and manually click "Post" on LinkedIn.
-
-    Args:
-        post_text (str): The full job post text to paste into LinkedIn.
-        job_title (str): The job title for logging/context purposes.
-
-    Returns:
-        dict: A result dictionary with keys:
-            - "status": "success" | "partial" | "error"
-            - "message": Human-readable description of what happened.
-            - "launch_method": "uwp" | "browser" (how LinkedIn was opened)
     """
     print("=" * 65)
     print(f"[LinkedIn Service] Auto-posting for: {job_title}")
     print("=" * 65)
+
+    import base64
+    import tempfile
+
+    # Save base64 image to temporary file if provided
+    temp_img_path = None
+    if poster_image and poster_image.startswith("data:image"):
+        try:
+            header, encoded = poster_image.split(",", 1)
+            img_bytes = base64.b64decode(encoded)
+            temp_dir = tempfile.gettempdir()
+            temp_img_path = os.path.join(temp_dir, f"hiring_poster_{int(time.time())}.png")
+            with open(temp_img_path, "wb") as f:
+                f.write(img_bytes)
+            print(f"[LinkedIn Service] Saved hiring poster to temporary file: {temp_img_path}")
+        except Exception as img_err:
+            print(f"[LinkedIn Service] Temp image save notice: {img_err}")
 
     # ── Step 1: Copy post text to system clipboard ───────────────────────────
     try:
@@ -230,7 +234,7 @@ def linkedin_auto_post(post_text: str, job_title: str = "Job Position") -> dict:
 
     # ── Step 3: Wait for LinkedIn window to appear ───────────────────────────
     print("[LinkedIn Service] Waiting for LinkedIn window to appear...")
-    time.sleep(5)  # Initial wait for app to launch
+    time.sleep(4)
 
     try:
         from pywinauto import Desktop
@@ -244,7 +248,6 @@ def linkedin_auto_post(post_text: str, job_title: str = "Job Position") -> dict:
     desktop = Desktop(backend="uia")
     app_win = None
 
-    # Poll for up to 12 seconds (beyond the initial 5-second wait)
     for attempt in range(12):
         app_win = _get_linkedin_app_window(desktop)
         if app_win:
@@ -278,13 +281,37 @@ def linkedin_auto_post(post_text: str, job_title: str = "Job Position") -> dict:
         }
 
     # ── Step 6: Wait for post editor to render ───────────────────────────────
-    time.sleep(2.5)
+    time.sleep(2)
 
-    # ── Step 7: Paste content into the editor via Ctrl+V ─────────────────────
+    # ── Step 7: Paste text content into editor via Ctrl+V ────────────────────
     try:
         import keyboard
         keyboard.send("ctrl+v")
-        print("[LinkedIn Service] Content pasted into editor via Ctrl+V.")
+        print("[LinkedIn Service] Text content pasted into editor via Ctrl+V.")
+        time.sleep(1.5)
+
+        # ── Step 8: Copy poster image to clipboard & paste into editor ──────
+        if temp_img_path and os.path.exists(temp_img_path):
+            try:
+                # Copy image file to Windows clipboard via PowerShell DIP stream
+                ps_script = f"""
+                Add-Type -AssemblyName System.Windows.Forms
+                Add-Type -AssemblyName System.Drawing
+                $img = [System.Drawing.Image]::FromFile('{temp_img_path}')
+                [System.Windows.Forms.Clipboard]::SetImage($img)
+                $img.Dispose()
+                """
+                subprocess.run(["powershell", "-NoProfile", "-Command", ps_script], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                print("[LinkedIn Service] Hiring poster image copied to Windows Clipboard.")
+
+                # Press Enter and paste image (Ctrl+V)
+                keyboard.send("enter")
+                time.sleep(0.5)
+                keyboard.send("ctrl+v")
+                print("[LinkedIn Service] Hiring poster image pasted into editor via Ctrl+V.")
+            except Exception as img_paste_err:
+                print(f"[LinkedIn Service] Image clipboard paste notice: {img_paste_err}")
+
     except ImportError:
         return {
             "status": "partial",
@@ -298,11 +325,11 @@ def linkedin_auto_post(post_text: str, job_title: str = "Job Position") -> dict:
             "launch_method": launch_method
         }
 
-    print("[LinkedIn Service] ✅ Post content successfully pasted into LinkedIn editor.")
+    print("[LinkedIn Service] ✅ Post text and hiring poster image successfully pasted into LinkedIn editor.")
     print("[LinkedIn Service] Awaiting user to review and click 'Post' on LinkedIn.")
 
     return {
         "status": "success",
-        "message": "Post content has been pasted into the LinkedIn editor. Review your post and click the 'Post' button on LinkedIn when ready.",
+        "message": "Post text and hiring poster image have been pasted into the LinkedIn editor. Review your post and click the 'Post' button on LinkedIn when ready.",
         "launch_method": launch_method
     }

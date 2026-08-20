@@ -854,6 +854,7 @@ window.generateHiringPosterCanvas = async function (opts = {}) {
       window[`_liPostData_${btnSuffix}`] = {
         postText: generatedPost,
         jobTitle: cleanTitle,
+        posterImage: posterUrl,
         isPipeline: false
       };
 
@@ -938,6 +939,7 @@ Make it ready for instant candidate resume matching.`
       window[`_liPostData_${btnSuffix}`] = {
         postText: generatedPost,
         jobTitle: extractedTitle,
+        posterImage: posterUrl,
         isPipeline: false
       };
 
@@ -1401,7 +1403,8 @@ window.postToLinkedIn = async function (btnSuffix) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         post_text: postData.postText,
-        job_title: postData.jobTitle
+        job_title: postData.jobTitle,
+        poster_image: postData.posterImage
       })
     });
 
