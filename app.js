@@ -1241,11 +1241,11 @@ async function renderJobsList() {
       const scoreBadge = c.relevance_score !== null ? `<span class="badge-rec badge-${c.recommendation}">${c.relevance_score}% ${c.recommendation}</span>` : '<span class="status-badge" style="background: rgba(255,255,255,0.1); color: #94a3b8;">Applied</span>';
 
       return `
-        <div style="background: rgba(15,23,42,0.7); padding: 10px 14px; border-radius: 8px; margin-top: 8px; display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; border: 1px solid rgba(255,255,255,0.08);">
+        <div style="background: #f8fafc; padding: 10px 14px; border-radius: 8px; margin-top: 8px; display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; border: 1px solid #e2e8f0;">
           <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-            <strong style="color: #f8fafc; font-size: 14px;">👤 ${c.name}</strong>
+            <strong style="color: #0f172a; font-size: 14px;">👤 ${c.name}</strong>
             <button onclick="window.openInterviewModal(${c.candidate_id})" class="btn btn-accent" style="font-size: 11px; padding: 4px 10px; line-height: 1;">📅 Call for Interview</button>
-            <button onclick="window.viewCandidatePdf(${c.candidate_id})" class="btn btn-secondary" style="font-size: 11px; padding: 4px 10px; line-height: 1; background: rgba(59,130,246,0.2); color: #60a5fa; border: 1px solid rgba(96,165,250,0.35);">📄 Open ${pdfName}</button>
+            <button onclick="window.viewCandidatePdf(${c.candidate_id})" class="btn btn-secondary" style="font-size: 11px; padding: 4px 10px; line-height: 1; background: #e0f2fe; color: #0284c7; border: 1px solid #bae6fd;">📄 Open ${pdfName}</button>
           </div>
           <div>${scoreBadge}</div>
         </div>
@@ -1259,12 +1259,12 @@ async function renderJobsList() {
           <span class="status-badge">${job.job_id}</span>
         </div>
         <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px;">Tag: <code>${job.subject_tag}</code></p>
-        <div style="font-size: 13px; color: #cbd5e1; white-space: pre-wrap; background: rgba(15,23,42,0.5); padding: 12px; border-radius: 8px; max-height: 220px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.06); margin-bottom: 12px;">${job.description}</div>
+        <div style="font-size: 13px; color: #0f172a; white-space: pre-wrap; background: #f8fafc; padding: 12px; border-radius: 8px; max-height: 220px; overflow-y: auto; border: 1px solid #cbd5e1; margin-bottom: 12px;">${job.description}</div>
 
         ${job.poster_image ? `
-        <div style="margin-bottom: 12px; text-align: center; background: rgba(15,23,42,0.7); padding: 10px; border-radius: 10px; border: 1px solid rgba(234,179,8,0.25);">
-          <div style="font-size: 12px; font-weight: 700; color: #eab308; margin-bottom: 6px;">🖼️ Hiring Poster Banner</div>
-          <img src="${job.poster_image}" alt="Hiring Poster" style="max-width: 220px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+        <div style="margin-bottom: 12px; text-align: center; background: #ffffff; padding: 10px; border-radius: 10px; border: 1px solid rgba(234,179,8,0.4); box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+          <div style="font-size: 12px; font-weight: 700; color: #d97706; margin-bottom: 6px;">🖼️ Hiring Poster Banner</div>
+          <img src="${job.poster_image}" alt="Hiring Poster" style="max-width: 220px; border-radius: 8px; border: 1px solid #e2e8f0; box-shadow: 0 4px 10px rgba(0,0,0,0.08);">
           <div style="margin-top: 6px;">
             <a href="${job.poster_image}" download="${(job.title || 'Job').replace(/\s+/g, '_')}_Hiring_Poster.png" class="btn btn-secondary" style="font-size: 11px; padding: 4px 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">📥 Download Poster PNG</a>
           </div>

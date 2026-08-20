@@ -843,15 +843,15 @@ export async function processVoiceAgentQuery(userQuery) {
 
       const btnSuffix = Date.now();
       const posterHtml = posterUrl ? `
-<div style="margin-top: 12px; text-align: center; background: rgba(15,23,42,0.8); padding: 12px; border-radius: 12px; border: 1px solid rgba(234,179,8,0.3);">
-  <div style="font-size: 13px; font-weight: 700; color: #eab308; margin-bottom: 8px;">🖼️ Al Rahim Group - Official Hiring Poster Banner</div>
-  <img src="${posterUrl}" alt="Official Hiring Poster" style="max-width: 100%; max-height: 380px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 8px 20px rgba(0,0,0,0.4);">
+<div style="margin-top: 12px; text-align: center; background: #ffffff; padding: 12px; border-radius: 12px; border: 1px solid rgba(234,179,8,0.4); box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+  <div style="font-size: 13px; font-weight: 700; color: #d97706; margin-bottom: 8px;">🖼️ Al Rahim Group - Official Hiring Poster Banner</div>
+  <img src="${posterUrl}" alt="Official Hiring Poster" style="max-width: 100%; max-height: 380px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
   <div style="margin-top: 8px;">
     <a href="${posterUrl}" download="${cleanTitle.replace(/\s+/g, '_')}_Hiring_Poster.png" class="btn btn-secondary" style="font-size: 12px; padding: 6px 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">📥 Download Hiring Poster (PNG)</a>
   </div>
 </div>` : '';
 
-      const replyMsg = `✅ Reconstructed and updated active job post for <b>${cleanTitle}</b> (ID: ${workflowState.activeJob.job_id})!\n\n<pre style="white-space: pre-wrap; background: rgba(15,23,42,0.7); padding: 12px; border-radius: 8px; margin-top: 8px; font-family: inherit; font-size: 13px; border: 1px solid rgba(56,189,248,0.2);">${generatedPost}</pre>${posterHtml}\n\n<div class="linkedin-action-btns" id="linkedin-btns-${btnSuffix}"><button class="btn-linkedin-post" onclick="window.postToLinkedIn('${btnSuffix}')" id="btn-li-post-${btnSuffix}">🔗 Post to LinkedIn</button><button class="btn-copy-continue" onclick="window.copyAndContinue('${btnSuffix}')" id="btn-li-copy-${btnSuffix}">📋 Copy & Continue</button></div>`;
+      const replyMsg = `✅ Reconstructed and updated active job post for <b>${cleanTitle}</b> (ID: ${workflowState.activeJob.job_id})!\n\n<pre style="white-space: pre-wrap; background: #f8fafc; color: #0f172a; padding: 12px; border-radius: 8px; margin-top: 8px; font-family: inherit; font-size: 13px; border: 1px solid #cbd5e1;">${generatedPost}</pre>${posterHtml}\n\n<div class="linkedin-action-btns" id="linkedin-btns-${btnSuffix}"><button class="btn-linkedin-post" onclick="window.postToLinkedIn('${btnSuffix}')" id="btn-li-post-${btnSuffix}">🔗 Post to LinkedIn</button><button class="btn-copy-continue" onclick="window.copyAndContinue('${btnSuffix}')" id="btn-li-copy-${btnSuffix}">📋 Copy & Continue</button></div>`;
 
       window[`_liPostData_${btnSuffix}`] = {
         postText: generatedPost,
@@ -928,7 +928,7 @@ Make it ready for instant candidate resume matching.`
 
       const btnSuffix = Date.now();
       const posterHtml = posterUrl ? `
-<div style="margin-top: 12px; text-align: center; background: rgba(15,23,42,0.8); padding: 12px; border-radius: 12px; border: 1px solid rgba(234,179,8,0.3);">
+<div style="margin-top: 12px; text-align: center; background: #ffffff; padding: 12px; border-radius: 12px; border: 1px solid rgba(234,179,8,0.3);">
   <div style="font-size: 13px; font-weight: 700; color: #eab308; margin-bottom: 8px;">🖼️ Al Rahim Group - Official Hiring Poster Banner</div>
   <img src="${posterUrl}" alt="Official Hiring Poster" style="max-width: 100%; max-height: 380px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 8px 20px rgba(0,0,0,0.4);">
   <div style="margin-top: 8px;">
@@ -1189,7 +1189,7 @@ Make it ready for instant candidate resume matching.`
         isPipeline: true
       };
 
-      const pipelinePostMsg = `📝 Job post ready for <b>${workflowState.activeJob.title}</b>:\n\n<pre style="white-space: pre-wrap; background: rgba(15,23,42,0.7); padding: 12px; border-radius: 8px; margin-top: 8px; font-family: inherit; font-size: 13px; border: 1px solid rgba(56,189,248,0.2);">${workflowState.activeJob.description}</pre>\n\n<div class="linkedin-action-btns" id="linkedin-btns-${pipelineBtnSuffix}"><button class="btn-linkedin-post" onclick="window.postToLinkedIn('${pipelineBtnSuffix}')" id="btn-li-post-${pipelineBtnSuffix}">🔗 Post to LinkedIn</button><button class="btn-copy-continue" onclick="window.copyAndContinue('${pipelineBtnSuffix}')" id="btn-li-copy-${pipelineBtnSuffix}">📋 Copy & Continue Pipeline</button></div>`;
+      const pipelinePostMsg = `📝 Job post ready for <b>${workflowState.activeJob.title}</b>:\n\n<pre style="white-space: pre-wrap; background: #f8fafc; color: #0f172a; padding: 12px; border-radius: 8px; margin-top: 8px; font-family: inherit; font-size: 13px; border: 1px solid #cbd5e1;">${workflowState.activeJob.description}</pre>\n\n<div class="linkedin-action-btns" id="linkedin-btns-${pipelineBtnSuffix}"><button class="btn-linkedin-post" onclick="window.postToLinkedIn('${pipelineBtnSuffix}')" id="btn-li-post-${pipelineBtnSuffix}">🔗 Post to LinkedIn</button><button class="btn-copy-continue" onclick="window.copyAndContinue('${pipelineBtnSuffix}')" id="btn-li-copy-${pipelineBtnSuffix}">📋 Copy & Continue Pipeline</button></div>`;
 
       addAgentChatMessage("ai", pipelinePostMsg);
       speakText(`Job post ready for ${workflowState.activeJob.title}. Post to LinkedIn or copy and continue the pipeline.`);
