@@ -86,9 +86,6 @@
       <button class="tab-btn active" data-tab="tab-voice-agent" id="nav-voice-agent" onclick="window.switchTab('tab-voice-agent')">
         <span>🎙️</span> Voice AI Agent
       </button>
-      <button class="tab-btn" data-tab="tab-writer" id="nav-writer" onclick="window.switchTab('tab-writer')">
-        <span>📝</span> Post Writer
-      </button>
       <button class="tab-btn" data-tab="tab-jobs" id="nav-jobs" onclick="window.switchTab('tab-jobs')">
         <span>💼</span> Jobs & Resumes
       </button>
@@ -162,48 +159,7 @@
       </div>
     </section>
 
-    <!-- ── TAB 1: POST WRITER ────────────────────────────────────────────────── -->
-    <section class="tab-view" id="tab-writer">
-      <div class="grid-2col">
-        
-        <!-- Left Panel: Single Prompt Entry (No separate Job Title box!) -->
-        <div class="glass-panel">
-          <h2 class="panel-title"><span>✍️</span> Describe Position or Voice Dictate</h2>
-          <div class="form-group">
-            <label class="form-label" for="prompt-input">Job Details & Prompt (Job position automatically detected)</label>
-            <textarea id="prompt-input" style="min-height: 140px;" placeholder="Describe job position, requirements, and responsibilities... (e.g., We are hiring a Senior Data Scientist at Al Rahim Group with 5+ years Machine Learning experience)"></textarea>
-          </div>
-          
-          <div class="btn-group">
-            <button class="btn btn-secondary btn-mic" id="btn-record">
-              <span>🎤</span> Record Voice
-            </button>
-            <button class="btn btn-primary" id="btn-generate">
-              <span>✨</span> Generate Post
-            </button>
-          </div>
-        </div>
 
-        <!-- Right Panel: Refined Preview & Share -->
-        <div class="glass-panel">
-          <h2 class="panel-title"><span>📱</span> LinkedIn Post Preview</h2>
-          <div class="preview-box" id="post-preview">Your generated LinkedIn post draft will appear here...</div>
-          
-          <div class="btn-group" style="margin-top: 16px;">
-            <button class="btn btn-secondary" id="btn-clear">
-              <span>🗑️</span> Clear
-            </button>
-            <button class="btn btn-primary" id="btn-create-job" onclick="window.createAndSaveJob()">
-              <span>📌</span> Create & Save Job Position
-            </button>
-            <button class="btn btn-accent" id="btn-copy-share" disabled>
-              <span>📋</span> Copy & Share LinkedIn
-            </button>
-          </div>
-        </div>
-
-      </div>
-    </section>
 
     <!-- ── TAB 2: JOBS & RESUMES MANAGER ───────────────────────────────────── -->
     <section class="tab-view" id="tab-jobs">

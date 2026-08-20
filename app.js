@@ -30,7 +30,7 @@ if (window.pdfjsLib) {
 
 // ── Application State ────────────────────────────────────────────────────────
 let state = {
-  activeTab: 'tab-writer',
+  activeTab: 'tab-voice-agent',
   isRecording: false,
   mediaRecorder: null,
   audioChunks: [],
